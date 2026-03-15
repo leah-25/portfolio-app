@@ -31,9 +31,12 @@ export function Table({ children, flush = false }: TableProps) {
 
 // ── Thead ─────────────────────────────────────────────────────────────────────
 
-export function Thead({ children }: { children: React.ReactNode }) {
+export function Thead({ children, sticky = false }: { children: React.ReactNode; sticky?: boolean }) {
   return (
-    <thead className="bg-surface border-b border-surface-border">
+    <thead className={[
+      'bg-surface border-b border-surface-border',
+      sticky ? 'sticky top-0 z-10' : '',
+    ].join(' ')}>
       {children}
     </thead>
   );
