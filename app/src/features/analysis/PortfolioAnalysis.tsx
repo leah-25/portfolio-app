@@ -33,6 +33,9 @@ interface PortfolioAnalysisProps {
 export default function PortfolioAnalysis({ open, onClose, holdings }: PortfolioAnalysisProps) {
   const { anthropicKey, analysisCache, setAnalysisCache } = useAIStore();
   const { quotes } = useMarketStore();
+  const useServerKey = import.meta.env.VITE_USE_SERVER_KEY === 'true';
+  // API access: either server-side key (proxy mode) or user-entered key
+  const hasApiAccess = useServerKey || !!anthropicKey;
   const { saveNote } = useResearchNotesStore();
 
   const [status, setStatus] = useState<'idle' | 'loading' | 'streaming' | 'done' | 'error'>('idle');
@@ -53,7 +56,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
   const currentKeyRef  = useRef(currentKey);
   currentKeyRef.current = currentKey;
 
-  // On open: load from cache if portfolio hasn't changed, else reset to idle
+  // On open: load from cache if portfolio unchanged, else idle
   useEffect(() => {
     if (!open) return;
     const cache = cacheRef.current;
@@ -66,7 +69,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
       setError('');
       setStatus('idle');
     }
-  }, [open]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-scroll while streaming
   useEffect(() => {
@@ -111,7 +114,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
     try {
       let firstChunk = true;
       await analyzePortfolio({
-        apiKey: anthropicKey,
+        apiKey: anthropicKey || undefined,
         holdings,
         quotes,
         signal: ctrl.signal,
@@ -249,7 +252,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
         <div ref={bodyRef} className="flex-1 overflow-y-auto px-6 py-5">
 
           {/* No API key */}
-          {!anthropicKey && (
+          {!hasApiAccess && (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-subtle">
                 <Sparkles size={22} className="text-accent" />
@@ -270,7 +273,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
           )}
 
           {/* Error */}
-          {anthropicKey && status === 'error' && (
+          {hasApiAccess && status === 'error' && (
             <div className="flex items-start gap-3 p-4 rounded-lg bg-loss-subtle border border-loss-border text-sm mb-4">
               <AlertCircle size={15} className="text-loss-text mt-0.5 flex-shrink-0" />
               <div>
@@ -281,7 +284,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
           )}
 
           {/* Idle */}
-          {anthropicKey && status === 'idle' && (
+          {hasApiAccess && status === 'idle' && (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
               <Sparkles size={28} className="text-accent opacity-60" />
               <div>
@@ -315,7 +318,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
         </div>
 
         {/* Footer */}
-        {anthropicKey && (status === 'done' || status === 'streaming') && (
+        {hasApiAccess && (status === 'done' || status === 'streaming') && (
           <div className="border-t border-surface-border px-5 py-3 flex-shrink-0">
             <p className="text-xs text-text-muted">
               Powered by <strong className="text-text-secondary">Claude Opus 4.6</strong>

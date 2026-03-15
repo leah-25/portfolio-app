@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, ShieldCheck } from 'lucide-react';
 import PageHeader from '../../components/layout/PageHeader';
 import PageContainer from '../../components/layout/PageContainer';
 import Card, { CardHeader, CardDivider } from '../../components/ui/Card';
@@ -150,45 +150,60 @@ export default function Settings() {
               subtitle="Claude API key for portfolio analysis"
             />
             <div className="space-y-4">
-              <div className="p-3 rounded-lg bg-accent-subtle border border-accent-border/40 text-xs text-text-secondary leading-relaxed">
-                The <strong className="text-text-primary">Analyze Portfolio</strong> feature uses{' '}
-                <strong className="text-text-primary">Claude</strong> (Anthropic) to generate
-                investment insights from your holdings data.
-                Get an API key at{' '}
-                <a
-                  href="https://console.anthropic.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-accent underline hover:text-accent-hover"
-                >
-                  console.anthropic.com
-                </a>
-                . Your key is stored locally and never sent to any server other than Anthropic.
-              </div>
-              <Input
-                label="Anthropic API key"
-                type="password"
-                placeholder="sk-ant-…"
-                value={aiKeyDraft}
-                onChange={(e) => { setAiKeyDraft(e.target.value); setAiSaved(false); }}
-                hint={anthropicKey ? 'Key saved — portfolio analysis is enabled.' : 'Required for AI portfolio analysis.'}
-              />
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleAiSave}
-                  disabled={!aiDirty && !aiSaved}
-                >
-                  Save AI key
-                </Button>
-                {aiSaved && (
-                  <span className="flex items-center gap-1.5 text-xs text-gain-text">
-                    <CheckCircle2 size={13} />
-                    Saved
-                  </span>
-                )}
-              </div>
+              {import.meta.env.VITE_USE_SERVER_KEY === 'true' ? (
+                <div className="flex items-start gap-3 p-3 rounded-lg bg-gain-subtle border border-gain-border text-xs text-text-secondary leading-relaxed">
+                  <ShieldCheck size={15} className="text-gain-text mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium text-text-primary mb-0.5">Server-side API key configured</p>
+                    <p>
+                      The Anthropic API key is loaded from <code className="font-mono text-text-primary">.env.local</code> on
+                      the server. It is never sent to the browser. Portfolio analysis is enabled.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="p-3 rounded-lg bg-accent-subtle border border-accent-border/40 text-xs text-text-secondary leading-relaxed">
+                    The <strong className="text-text-primary">Analyze Portfolio</strong> feature uses{' '}
+                    <strong className="text-text-primary">Claude</strong> (Anthropic) to generate
+                    investment insights from your holdings data.
+                    Get an API key at{' '}
+                    <a
+                      href="https://console.anthropic.com"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-accent underline hover:text-accent-hover"
+                    >
+                      console.anthropic.com
+                    </a>
+                    . Your key is stored locally in the browser.
+                  </div>
+                  <Input
+                    label="Anthropic API key"
+                    type="password"
+                    placeholder="sk-ant-…"
+                    value={aiKeyDraft}
+                    onChange={(e) => { setAiKeyDraft(e.target.value); setAiSaved(false); }}
+                    hint={anthropicKey ? 'Key saved — portfolio analysis is enabled.' : 'Required for AI portfolio analysis.'}
+                  />
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={handleAiSave}
+                      disabled={!aiDirty && !aiSaved}
+                    >
+                      Save AI key
+                    </Button>
+                    {aiSaved && (
+                      <span className="flex items-center gap-1.5 text-xs text-gain-text">
+                        <CheckCircle2 size={13} />
+                        Saved
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </Card>
 
