@@ -1,8 +1,9 @@
 import { useParams, Link } from 'react-router-dom';
+import { useEffect } from 'react';
 import {
   ChevronLeft, TrendingUp, TrendingDown,
   CheckCircle2, XCircle, Clock, BarChart2, BookOpen,
-  ArrowLeftRight, ShieldAlert, Zap,
+  ArrowLeftRight, ShieldAlert, Zap, RefreshCw,
 } from 'lucide-react';
 import PageContainer, { PageGrid } from '../../components/layout/PageContainer';
 import Card, { CardHeader, CardDivider } from '../../components/ui/Card';
@@ -11,7 +12,8 @@ import Tag from '../../components/ui/Tag';
 import ConvictionPips from '../../components/ui/ConvictionPips';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
 import EmptyState from '../../components/ui/EmptyState';
-import { formatCurrency, formatPct, formatDate } from '../../lib/formatters';
+import { useMarketStore } from '../../store/marketStore';
+import { formatCurrency, formatCompact, formatPct, formatDate } from '../../lib/formatters';
 
 // ── Mock data catalogue ───────────────────────────────────────────────────────
 
@@ -213,7 +215,19 @@ export default function StockDetail() {
   const upper = symbol.toUpperCase();
   const data  = MOCK_CATALOGUE[upper] ?? getFallbackData(upper);
 
-  const gain = data.pnl >= 0;
+  const { quotes, loading, refresh } = useMarketStore();
+
+  // Fetch this symbol's quote on mount
+  useEffect(() => { refresh([upper]); }, [upper]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const quote = quotes[upper];
+
+  // Merge live price into position calculations
+  const currentValue = quote ? data.quantity * quote.price : data.currentValue;
+  const totalCost    = data.quantity * data.costBasis;
+  const pnl          = currentValue - totalCost;
+  const pnlPct       = (pnl / totalCost) * 100;
+  const gain         = pnl >= 0;
 
   return (
     <>
@@ -240,12 +254,30 @@ export default function StockDetail() {
           </div>
 
           {/* Position stats strip */}
-          <div className="flex flex-wrap gap-6">
-            <HeroStat label="Current Value" value={formatCurrency(data.currentValue, 'USD')} />
+          <div className="flex flex-wrap gap-6 items-end">
+            {/* Live price */}
+            {quote ? (
+              <div>
+                <p className="text-2xs font-semibold uppercase tracking-widest text-text-muted mb-1">Price</p>
+                <p className="text-lg font-semibold num text-text-primary leading-none">
+                  {formatCurrency(quote.price, 'USD')}
+                </p>
+                <p className={`text-2xs num mt-0.5 ${quote.change >= 0 ? 'text-gain-text' : 'text-loss-text'}`}>
+                  {quote.change >= 0 ? '+' : ''}{formatCurrency(quote.change, 'USD')}
+                  {' '}({quote.changePercent >= 0 ? '+' : ''}{quote.changePercent.toFixed(2)}%) today
+                </p>
+              </div>
+            ) : loading ? (
+              <div className="flex items-center gap-1.5 text-2xs text-text-muted">
+                <RefreshCw size={11} className="animate-spin" /> Loading price…
+              </div>
+            ) : null}
+
+            <HeroStat label="Position Value" value={formatCurrency(currentValue, 'USD')} />
             <HeroStat
               label="Total P&L"
-              value={`${gain ? '+' : ''}${formatPct(data.pnlPct)}`}
-              sub={`${gain ? '+' : ''}${formatCurrency(data.pnl, 'USD')}`}
+              value={`${gain ? '+' : ''}${formatPct(pnlPct)}`}
+              sub={`${gain ? '+' : ''}${formatCurrency(pnl, 'USD')}`}
               sentiment={gain ? 'gain' : 'loss'}
             />
             <HeroStat label="Avg Cost" value={formatCurrency(data.costBasis, 'USD')} sub={`${data.quantity} units`} />
@@ -255,6 +287,9 @@ export default function StockDetail() {
               sub={`Target ${data.targetWeight}%`}
               sentiment={data.weight > data.targetWeight + 0.5 ? 'warn' : undefined}
             />
+            {quote?.marketCap ? (
+              <HeroStat label="Market Cap" value={formatCompact(quote.marketCap, 'USD')} />
+            ) : null}
           </div>
         </div>
       </div>

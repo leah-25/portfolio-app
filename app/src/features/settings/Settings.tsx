@@ -1,11 +1,30 @@
+import { useState } from 'react';
+import { CheckCircle2 } from 'lucide-react';
 import PageHeader from '../../components/layout/PageHeader';
 import PageContainer from '../../components/layout/PageContainer';
 import Card, { CardHeader, CardDivider } from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
+import { useMarketStore } from '../../store/marketStore';
 
 export default function Settings() {
+  const { apiKey, refreshInterval, setApiKey, setRefreshInterval } = useMarketStore();
+
+  const [keyDraft,      setKeyDraft]      = useState(apiKey);
+  const [intervalDraft, setIntervalDraft] = useState(String(refreshInterval));
+  const [saved,         setSaved]         = useState(false);
+
+  function handleSave() {
+    setApiKey(keyDraft);
+    const mins = parseInt(intervalDraft, 10);
+    setRefreshInterval(isNaN(mins) ? 5 : mins);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  }
+
+  const dirty = keyDraft !== apiKey || intervalDraft !== String(refreshInterval);
+
   return (
     <>
       <PageHeader
@@ -32,22 +51,62 @@ export default function Settings() {
             </div>
           </Card>
 
-          {/* API keys */}
+          {/* Market data */}
           <Card>
-            <CardHeader title="API Keys" subtitle="Optional — improves real-time data quality" />
+            <CardHeader
+              title="Market Data"
+              subtitle="Live price feed configuration"
+            />
             <div className="space-y-4">
+              <div className="p-3 rounded-lg bg-accent-subtle border border-accent-border/40 text-xs text-text-secondary leading-relaxed">
+                This app uses <strong className="text-text-primary">Financial Modeling Prep</strong> for real-time quotes.
+                Get a free API key at{' '}
+                <a
+                  href="https://financialmodelingprep.com/developer/docs"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent underline hover:text-accent-hover"
+                >
+                  financialmodelingprep.com
+                </a>
+                {' '}— the free tier covers 250 requests/day, enough for personal use.
+              </div>
+
               <Input
-                label="Finnhub API key"
+                label="FMP API key"
                 type="password"
-                placeholder="Enter your Finnhub key"
-                hint="Free tier available at finnhub.io — improves stock quote reliability"
+                placeholder="Enter your Financial Modeling Prep key"
+                value={keyDraft}
+                onChange={(e) => { setKeyDraft(e.target.value); setSaved(false); }}
+                hint={apiKey ? 'Key saved — prices will refresh on next page load.' : 'Required for live prices.'}
               />
+
               <Input
-                label="Auto-refresh interval"
+                label="Auto-refresh interval (minutes)"
                 type="number"
-                defaultValue={5}
-                hint="Minutes between automatic price updates"
+                min={0}
+                max={60}
+                value={intervalDraft}
+                onChange={(e) => { setIntervalDraft(e.target.value); setSaved(false); }}
+                hint="Set to 0 to disable automatic refresh."
               />
+
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={!dirty && !saved}
+                >
+                  Save API settings
+                </Button>
+                {saved && (
+                  <span className="flex items-center gap-1.5 text-xs text-gain-text">
+                    <CheckCircle2 size={13} />
+                    Saved
+                  </span>
+                )}
+              </div>
             </div>
           </Card>
 

@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
-import { Search, SlidersHorizontal, TrendingUp, TrendingDown } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { Search, SlidersHorizontal, TrendingUp, TrendingDown, RefreshCw, AlertCircle, Settings2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import PageHeader from '../../components/layout/PageHeader';
 import PageContainer from '../../components/layout/PageContainer';
 import { Table, Thead, Tbody, Tr, Th, Td, TableEmpty } from '../../components/ui/Table';
@@ -7,6 +8,7 @@ import Badge from '../../components/ui/Badge';
 import ConvictionPips from '../../components/ui/ConvictionPips';
 import HoldingDrawer from './HoldingDrawer';
 import { RISK_VARIANT } from './constants';
+import { useMarketStore } from '../../store/marketStore';
 import { formatCurrency, formatPct, formatDate } from '../../lib/formatters';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -258,8 +260,38 @@ export default function Holdings() {
   const [selectedId,   setSelectedId]   = useState<string | null>(null);
   const [showFilters,  setShowFilters]  = useState(false);
 
+  // ── Market data ───────────────────────────────────────────────────────────
+  const { quotes, loading, error, lastUpdated, refreshInterval, refresh, clearError } =
+    useMarketStore();
+
+  const allSymbols = useMemo(() => MOCK.map((h) => h.symbol), []);
+
+  const doRefresh = useCallback(() => refresh(allSymbols), [refresh, allSymbols]);
+
+  // Initial fetch + auto-refresh interval
+  useEffect(() => {
+    doRefresh();
+    if (refreshInterval <= 0) return;
+    const id = setInterval(doRefresh, refreshInterval * 60 * 1000);
+    return () => clearInterval(id);
+  }, [doRefresh, refreshInterval]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Enrich mock holdings with live quote data ─────────────────────────────
+  const enriched = useMemo(() =>
+    MOCK.map((h) => {
+      const q = quotes[h.symbol];
+      if (!q) return h;
+      const currentValue = h.quantity * q.price;
+      const totalCost    = h.quantity * h.costBasis;
+      const pnl          = currentValue - totalCost;
+      const pnlPct       = (pnl / totalCost) * 100;
+      return { ...h, currentValue, pnl, pnlPct };
+    }),
+    [quotes],
+  );
+
   const rows = useMemo(() => {
-    let out = MOCK.filter((h) => {
+    let out = enriched.filter((h) => {
       if (search) {
         const q = search.toLowerCase();
         if (!h.symbol.toLowerCase().includes(q) && !h.name.toLowerCase().includes(q)) return false;
@@ -348,6 +380,30 @@ export default function Holdings() {
               <SlidersHorizontal size={13} />
               Filters
             </button>
+
+            {/* Market data status */}
+            <div className="ml-auto flex items-center gap-2">
+              {loading && (
+                <span className="flex items-center gap-1.5 text-2xs text-text-muted">
+                  <RefreshCw size={11} className="animate-spin" />
+                  Updating…
+                </span>
+              )}
+              {!loading && lastUpdated && !error && (
+                <span className="text-2xs text-text-muted num">
+                  Live · {new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+              {!loading && (
+                <button
+                  onClick={doRefresh}
+                  className="p-1 rounded text-text-muted hover:text-text-primary hover:bg-surface-overlay transition-colors"
+                  title="Refresh prices"
+                >
+                  <RefreshCw size={13} />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Advanced filters */}
@@ -364,6 +420,27 @@ export default function Holdings() {
             </div>
           )}
         </div>
+
+        {/* ── Market data notice / error ────────────────────────────── */}
+        {error === 'NO_API_KEY' && (
+          <div className="flex items-center gap-3 px-6 py-2.5 bg-accent-subtle border-b border-accent-border/40 text-xs text-text-secondary">
+            <Settings2 size={13} className="text-accent flex-shrink-0" />
+            Prices are estimates.{' '}
+            <Link to="/settings" className="text-accent underline hover:text-accent-hover">
+              Add your FMP API key
+            </Link>
+            {' '}for live market data.
+            <button onClick={clearError} className="ml-auto text-text-muted hover:text-text-primary">✕</button>
+          </div>
+        )}
+        {error && error !== 'NO_API_KEY' && (
+          <div className="flex items-center gap-3 px-6 py-2.5 bg-loss-subtle border-b border-loss-border/40 text-xs text-loss-text">
+            <AlertCircle size={13} className="flex-shrink-0" />
+            <span className="flex-1">{error}</span>
+            <button onClick={doRefresh}   className="underline hover:no-underline">Retry</button>
+            <button onClick={clearError}  className="ml-2 text-text-muted hover:text-text-primary">✕</button>
+          </div>
+        )}
 
         {/* ── Summary strip ─────────────────────────────────────────── */}
         <div className="flex items-center gap-5 px-6 py-2.5 border-b border-surface-border text-xs text-text-muted">
@@ -441,7 +518,21 @@ export default function Holdings() {
                     {/* Position */}
                     <Td numeric>
                       <p className="font-semibold text-text-primary text-sm num">{formatCurrency(h.currentValue, 'USD')}</p>
-                      <p className="text-2xs text-text-muted num">{h.quantity} × {formatCurrency(h.costBasis, 'USD')}</p>
+                      {(() => {
+                        const q = quotes[h.symbol];
+                        return q ? (
+                          <>
+                            <p className="text-2xs text-text-muted num">
+                              {h.quantity} × {formatCurrency(q.price, 'USD')}
+                            </p>
+                            <p className={`text-2xs num ${q.change >= 0 ? 'text-gain-text' : 'text-loss-text'}`}>
+                              {q.change >= 0 ? '+' : ''}{formatCurrency(q.change, 'USD')} ({q.changePercent >= 0 ? '+' : ''}{q.changePercent.toFixed(2)}%) today
+                            </p>
+                          </>
+                        ) : (
+                          <p className="text-2xs text-text-muted num">{h.quantity} × {formatCurrency(h.costBasis, 'USD')}</p>
+                        );
+                      })()}
                     </Td>
 
                     {/* P&L */}
