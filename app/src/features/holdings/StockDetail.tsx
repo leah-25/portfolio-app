@@ -13,6 +13,7 @@ import ConvictionPips from '../../components/ui/ConvictionPips';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
 import EmptyState from '../../components/ui/EmptyState';
 import { useMarketStore } from '../../store/marketStore';
+import { useHoldingsStore } from '../../store/holdingsStore';
 import { formatCurrency, formatCompact, formatPct, formatDate } from '../../lib/formatters';
 
 // ── Mock data catalogue ───────────────────────────────────────────────────────
@@ -213,7 +214,34 @@ const CATALYST_META = {
 export default function StockDetail() {
   const { symbol = '' } = useParams<{ symbol: string }>();
   const upper = symbol.toUpperCase();
-  const data  = MOCK_CATALOGUE[upper] ?? getFallbackData(upper);
+
+  // Position data from the persistent store
+  const { holdings } = useHoldingsStore();
+  const holding = holdings.find((h) => h.symbol === upper);
+
+  // Rich catalogue content (description, bull/bear, KPIs, etc.)
+  const catalogue = MOCK_CATALOGUE[upper];
+
+  // Merged data object for the template — store wins on position fields
+  const data: StockData = {
+    ...(catalogue ?? getFallbackData(upper)),
+    ...(holding ? {
+      symbol:       holding.symbol,
+      name:         holding.name,
+      type:         holding.type,
+      sector:       holding.sector,
+      quantity:     holding.quantity,
+      costBasis:    holding.costBasis,
+      currentValue: holding.currentValue,
+      pnl:          holding.pnl,
+      pnlPct:       holding.pnlPct,
+      weight:       holding.weight,
+      targetWeight: holding.targetWeight ?? 0,
+      conviction:   holding.conviction ?? 3,
+      thesisBody:   holding.thesisBody,
+      thesisUpdatedAt: holding.lastReviewed,
+    } : {}),
+  };
 
   const { quotes, loading, refresh } = useMarketStore();
 
@@ -226,7 +254,7 @@ export default function StockDetail() {
   const currentValue = quote ? data.quantity * quote.price : data.currentValue;
   const totalCost    = data.quantity * data.costBasis;
   const pnl          = currentValue - totalCost;
-  const pnlPct       = (pnl / totalCost) * 100;
+  const pnlPct       = totalCost > 0 ? (pnl / totalCost) * 100 : 0;
   const gain         = pnl >= 0;
 
   return (

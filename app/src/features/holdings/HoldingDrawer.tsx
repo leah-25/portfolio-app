@@ -1,4 +1,4 @@
-import { X, ExternalLink, Plus, FileText, AlertTriangle } from 'lucide-react';
+import { X, ExternalLink, Pencil, Trash2, FileText, AlertTriangle } from 'lucide-react';
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Badge from '../../components/ui/Badge';
@@ -8,15 +8,17 @@ import ConvictionPips from '../../components/ui/ConvictionPips';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
 import { RISK_VARIANT, TYPE_VARIANT } from './constants';
 import { formatCurrency, formatPct, formatDate, formatRelative } from '../../lib/formatters';
-import type { HoldingRecord } from './Holdings';
+import { useHoldingsStore } from '../../store/holdingsStore';
+import type { HoldingRecord } from './types';
 
 interface HoldingDrawerProps {
   holding: HoldingRecord | null;
   onClose: () => void;
+  onEdit?: (h: HoldingRecord) => void;
 }
 
 
-export default function HoldingDrawer({ holding, onClose }: HoldingDrawerProps) {
+export default function HoldingDrawer({ holding, onClose, onEdit }: HoldingDrawerProps) {
   // Close on Escape key
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -51,13 +53,14 @@ export default function HoldingDrawer({ holding, onClose }: HoldingDrawerProps) 
         role="dialog"
         aria-modal="true"
       >
-        {holding && <DrawerContent holding={holding} onClose={onClose} />}
+        {holding && <DrawerContent holding={holding} onClose={onClose} onEdit={onEdit} />}
       </div>
     </>
   );
 }
 
-function DrawerContent({ holding, onClose }: { holding: HoldingRecord; onClose: () => void }) {
+function DrawerContent({ holding, onClose, onEdit }: { holding: HoldingRecord; onClose: () => void; onEdit?: (h: HoldingRecord) => void }) {
+  const { removeHolding } = useHoldingsStore();
   const driftWarning = holding.thesisDrift;
   const reviewedAgo = formatRelative(holding.lastReviewed);
   const reviewedDate = formatDate(holding.lastReviewed);
@@ -185,11 +188,22 @@ function DrawerContent({ holding, onClose }: { holding: HoldingRecord; onClose: 
             View Detail
           </Button>
         </Link>
-        <Button variant="secondary" size="sm">
-          <Plus size={14} />
-          Add Note
+        {onEdit && (
+          <Button variant="secondary" size="sm" onClick={() => { onEdit(holding); onClose(); }}>
+            <Pencil size={14} />
+            Edit
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-loss-text hover:bg-loss-subtle hover:text-loss-text"
+          onClick={() => { removeHolding(holding.id); onClose(); }}
+          title="Remove holding"
+        >
+          <Trash2 size={14} />
         </Button>
-        <Button variant="ghost" size="sm">
+        <Button variant="ghost" size="sm" onClick={onClose}>
           <ExternalLink size={14} />
         </Button>
       </div>

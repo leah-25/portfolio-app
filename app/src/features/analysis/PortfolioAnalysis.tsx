@@ -5,7 +5,7 @@ import Button from '../../components/ui/Button';
 import { useAIStore } from '../../store/aiStore';
 import { useMarketStore } from '../../store/marketStore';
 import { analyzePortfolio } from '../../lib/analysis/portfolioAnalysis';
-import type { HoldingRecord } from '../holdings/Holdings';
+import type { HoldingRecord } from '../holdings/types';
 
 // ── Simple markdown renderer ───────────────────────────────────────────────────
 // Renders the subset of markdown Claude produces: headings, bold, bullets, paragraphs.

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, SlidersHorizontal, TrendingUp, TrendingDown, RefreshCw, AlertCircle, Settings2, Sparkles } from 'lucide-react';
+import { Search, SlidersHorizontal, TrendingUp, TrendingDown, RefreshCw, AlertCircle, Settings2, Sparkles, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../../components/layout/PageHeader';
 import PageContainer from '../../components/layout/PageContainer';
@@ -7,39 +7,16 @@ import { Table, Thead, Tbody, Tr, Th, Td, TableEmpty } from '../../components/ui
 import Badge from '../../components/ui/Badge';
 import ConvictionPips from '../../components/ui/ConvictionPips';
 import HoldingDrawer from './HoldingDrawer';
+import HoldingForm from './HoldingForm';
 import PortfolioAnalysis from '../analysis/PortfolioAnalysis';
 import { RISK_VARIANT } from './constants';
+import { useHoldingsStore } from '../../store/holdingsStore';
 import { useMarketStore } from '../../store/marketStore';
 import { formatCurrency, formatPct, formatDate } from '../../lib/formatters';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface Lot {
-  date: string;
-  quantity: number;
-  price: number;
-}
-
-export interface HoldingRecord {
-  id: string;
-  symbol: string;
-  name: string;
-  type: 'stock' | 'crypto' | 'etf';
-  sector: string;
-  quantity: number;
-  costBasis: number;       // per unit
-  currentValue: number;    // total current value
-  pnl: number;
-  pnlPct: number;
-  weight: number;          // % of portfolio
-  targetWeight: number | null;
-  conviction: 1 | 2 | 3 | 4 | 5 | null;
-  thesisDrift: boolean;
-  thesisBody: string;
-  lastReviewed: string;    // ISO date
-  riskLevel: 'low' | 'medium' | 'high';
-  lots: Lot[];
-}
+export type { HoldingRecord, Lot } from './types';
 
 type SortCol      = 'symbol' | 'currentValue' | 'pnlPct' | 'weight' | 'conviction' | 'lastReviewed';
 type SortDir      = 'asc' | 'desc';
@@ -47,105 +24,6 @@ type TypeFilter   = 'all' | 'stock' | 'crypto' | 'etf';
 type ThesisFilter = 'all' | 'current' | 'drift' | 'none';
 type RiskFilter   = 'all' | 'low' | 'medium' | 'high';
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
-
-const MOCK: HoldingRecord[] = [
-  {
-    id: '1', symbol: 'NVDA', name: 'NVIDIA Corporation', type: 'stock', sector: 'Semiconductors',
-    quantity: 45, costBasis: 220, currentValue: 57_600, pnl: 47_700, pnlPct: 481.8,
-    weight: 28.0, targetWeight: 25,
-    conviction: 5, thesisDrift: false,
-    thesisBody: 'Dominant GPU platform for AI training and inference. Blackwell ramp validates the data-center thesis. Hyperscaler CapEx tailwinds multi-year. Hold full position.',
-    lastReviewed: '2025-03-10T00:00:00Z', riskLevel: 'medium',
-    lots: [
-      { date: '2022-09-14', quantity: 20, price: 135 },
-      { date: '2023-02-28', quantity: 15, price: 234 },
-      { date: '2024-01-15', quantity: 10, price: 495 },
-    ],
-  },
-  {
-    id: '2', symbol: 'MSFT', name: 'Microsoft Corporation', type: 'stock', sector: 'Software',
-    quantity: 30, costBasis: 260, currentValue: 34_800, pnl: 27_000, pnlPct: 346.2,
-    weight: 16.9, targetWeight: 20,
-    conviction: 4, thesisDrift: false,
-    thesisBody: "Cloud (Azure) + AI (Copilot) flywheel. Pricing power through enterprise lock-in. OpenAI partnership adds optionality. Underweight vs target — adding on weakness.",
-    lastReviewed: '2025-02-20T00:00:00Z', riskLevel: 'low',
-    lots: [
-      { date: '2021-11-03', quantity: 15, price: 305 },
-      { date: '2022-10-17', quantity: 15, price: 215 },
-    ],
-  },
-  {
-    id: '3', symbol: 'BTC', name: 'Bitcoin', type: 'crypto', sector: 'Digital Assets',
-    quantity: 0.42, costBasis: 28_500, currentValue: 30_870, pnl: 18_900, pnlPct: 150.0,
-    weight: 15.0, targetWeight: 15,
-    conviction: 4, thesisDrift: false,
-    thesisBody: 'Macro hedge and scarce digital store of value. Halvening-driven supply shocks historically precede 12-18 month bull runs. ETF inflows add a demand vector absent in prior cycles.',
-    lastReviewed: '2025-03-01T00:00:00Z', riskLevel: 'high',
-    lots: [
-      { date: '2022-12-20', quantity: 0.2, price: 16_500 },
-      { date: '2023-08-08', quantity: 0.22, price: 29_400 },
-    ],
-  },
-  {
-    id: '4', symbol: 'TSLA', name: 'Tesla, Inc.', type: 'stock', sector: 'Automotive / EV',
-    quantity: 60, costBasis: 185, currentValue: 22_920, pnl: 11_820, pnlPct: 106.7,
-    weight: 11.1, targetWeight: 10,
-    conviction: 3, thesisDrift: true,
-    thesisBody: 'Energy storage + autonomy platform play. Core auto thesis under pressure from BYD and margin erosion. Monitoring FSD progress as the key re-rating catalyst.',
-    lastReviewed: '2024-11-15T00:00:00Z', riskLevel: 'high',
-    lots: [
-      { date: '2022-12-29', quantity: 40, price: 123 },
-      { date: '2023-05-10', quantity: 20, price: 171 },
-    ],
-  },
-  {
-    id: '5', symbol: 'AMZN', name: 'Amazon.com, Inc.', type: 'stock', sector: 'E-commerce / Cloud',
-    quantity: 55, costBasis: 140, currentValue: 20_075, pnl: 12_375, pnlPct: 160.7,
-    weight: 9.7, targetWeight: 12,
-    conviction: 4, thesisDrift: false,
-    thesisBody: 'AWS margin expansion + retail profitability turn. Prime ecosystem flywheel and advertising accelerate FCF. Underweight versus target — actively adding.',
-    lastReviewed: '2025-02-05T00:00:00Z', riskLevel: 'low',
-    lots: [
-      { date: '2022-11-22', quantity: 35, price: 94 },
-      { date: '2023-09-18', quantity: 20, price: 131 },
-    ],
-  },
-  {
-    id: '6', symbol: 'ETH', name: 'Ethereum', type: 'crypto', sector: 'Digital Assets',
-    quantity: 8.5, costBasis: 1_450, currentValue: 13_770, pnl: 1_445, pnlPct: 11.7,
-    weight: 6.7, targetWeight: 8,
-    conviction: 3, thesisDrift: false,
-    thesisBody: 'Smart contract settlement layer. EIP-4844 lowers L2 fees. Staking yield adds carry. Underweight — thesis intact, adding after BTC confirmation.',
-    lastReviewed: '2025-01-22T00:00:00Z', riskLevel: 'high',
-    lots: [
-      { date: '2023-06-14', quantity: 5, price: 1_800 },
-      { date: '2023-10-02', quantity: 3.5, price: 1_650 },
-    ],
-  },
-  {
-    id: '7', symbol: 'META', name: 'Meta Platforms, Inc.', type: 'stock', sector: 'Social / AI',
-    quantity: 22, costBasis: 148, currentValue: 13_200, pnl: 9_944, pnlPct: 305.5,
-    weight: 6.4, targetWeight: 6,
-    conviction: 4, thesisDrift: false,
-    thesisBody: "Advertising flywheel amplified by AI. Threads gaining share. Reality Labs losses narrowing. Zuckerberg's year of efficiency delivered. Full position — thesis confirmed.",
-    lastReviewed: '2025-03-05T00:00:00Z', riskLevel: 'medium',
-    lots: [
-      { date: '2022-10-31', quantity: 22, price: 148 },
-    ],
-  },
-  {
-    id: '8', symbol: 'PLTR', name: 'Palantir Technologies', type: 'stock', sector: 'Enterprise AI',
-    quantity: 200, costBasis: 9.5, currentValue: 8_200, pnl: 6_300, pnlPct: 331.6,
-    weight: 4.0, targetWeight: 4,
-    conviction: 3, thesisDrift: true,
-    thesisBody: 'AIP platform adoption driving commercial inflection. Government contracts provide baseline. Position is smaller conviction than others — monitoring commercial growth rate.',
-    lastReviewed: '2024-10-18T00:00:00Z', riskLevel: 'medium',
-    lots: [
-      { date: '2021-03-15', quantity: 200, price: 24.5 },
-    ],
-  },
-];
 
 // ── Filter pill group ─────────────────────────────────────────────────────────
 
@@ -261,12 +139,17 @@ export default function Holdings() {
   const [selectedId,    setSelectedId]    = useState<string | null>(null);
   const [showFilters,   setShowFilters]   = useState(false);
   const [showAnalysis,  setShowAnalysis]  = useState(false);
+  const [formHolding,   setFormHolding]   = useState<import('./types').HoldingRecord | null>(null);
+  const [showForm,      setShowForm]      = useState(false);
+
+  // ── Holdings store ────────────────────────────────────────────────────────
+  const { holdings } = useHoldingsStore();
 
   // ── Market data ───────────────────────────────────────────────────────────
   const { quotes, loading, error, lastUpdated, refreshInterval, refresh, clearError } =
     useMarketStore();
 
-  const allSymbols = useMemo(() => MOCK.map((h) => h.symbol), []);
+  const allSymbols = useMemo(() => holdings.map((h) => h.symbol), [holdings]);
 
   const doRefresh = useCallback(() => refresh(allSymbols), [refresh, allSymbols]);
 
@@ -278,9 +161,9 @@ export default function Holdings() {
     return () => clearInterval(id);
   }, [doRefresh, refreshInterval]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Enrich mock holdings with live quote data ─────────────────────────────
+  // ── Enrich stored holdings with live quote data ───────────────────────────
   const enriched = useMemo(() =>
-    MOCK.map((h) => {
+    holdings.map((h) => {
       const q = quotes[h.symbol];
       if (!q) return h;
       const currentValue = h.quantity * q.price;
@@ -289,7 +172,7 @@ export default function Holdings() {
       const pnlPct       = (pnl / totalCost) * 100;
       return { ...h, currentValue, pnl, pnlPct };
     }),
-    [quotes],
+    [holdings, quotes],
   );
 
   const rows = useMemo(() => {
@@ -318,7 +201,7 @@ export default function Holdings() {
       }
       return sort.dir === 'asc' ? cmp : -cmp;
     });
-  }, [search, typeFilter, thesisFilter, riskFilter, sort]);
+  }, [enriched, search, typeFilter, thesisFilter, riskFilter, sort]);
 
   const totalValue = rows.reduce((s, h) => s + h.currentValue, 0);
   const totalPnl   = rows.reduce((s, h) => s + h.pnl, 0);
@@ -335,7 +218,7 @@ export default function Holdings() {
     return sort.col === col ? sort.dir : 'none';
   }
 
-  const selected = MOCK.find((h) => h.id === selectedId) ?? null;
+  const selected = holdings.find((h) => h.id === selectedId) ?? null;
 
   return (
     <>
@@ -405,6 +288,13 @@ export default function Holdings() {
                   <RefreshCw size={13} />
                 </button>
               )}
+              <button
+                onClick={() => { setFormHolding(null); setShowForm(true); }}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-surface-overlay border border-surface-border text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors"
+              >
+                <Plus size={12} />
+                Add
+              </button>
               <button
                 onClick={() => setShowAnalysis(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent-hover transition-colors"
@@ -498,7 +388,14 @@ export default function Holdings() {
             </Thead>
             <Tbody>
               {rows.length === 0 ? (
-                <TableEmpty cols={7} message="No holdings match your filters." />
+                <TableEmpty
+                  cols={7}
+                  message={
+                    holdings.length === 0
+                      ? 'No holdings yet. Click "Add" to add your first position.'
+                      : 'No holdings match your filters.'
+                  }
+                />
               ) : (
                 rows.map((h) => (
                   <Tr
@@ -590,6 +487,7 @@ export default function Holdings() {
       <HoldingDrawer
         holding={selected}
         onClose={() => setSelectedId(null)}
+        onEdit={(h) => { setFormHolding(h); setShowForm(true); }}
       />
 
       {/* ── AI analysis panel ─────────────────────────────────────────── */}
@@ -597,6 +495,13 @@ export default function Holdings() {
         open={showAnalysis}
         onClose={() => setShowAnalysis(false)}
         holdings={enriched}
+      />
+
+      {/* ── Add / Edit holding modal ───────────────────────────────────── */}
+      <HoldingForm
+        holding={formHolding}
+        open={showForm}
+        onClose={() => setShowForm(false)}
       />
     </>
   );

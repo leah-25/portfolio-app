@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { HoldingRecord } from '../../features/holdings/Holdings';
+import type { HoldingRecord } from '../../features/holdings/types';
 import type { Quote } from '../marketData';
 
 export interface AnalysisOptions {
