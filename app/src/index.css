@@ -1,0 +1,79 @@
+/* ── Google Fonts — must precede @tailwind directives ─────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base resets ───────────────────────────────────────────────────────────── */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-surface text-text-primary font-sans;
+    min-height: 100dvh;
+  }
+
+  /* Scrollbar styling — keeps the premium feel */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-surface;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-muted rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-surface-border;
+  }
+
+  /* Focus ring — accessible but minimal */
+  :focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-accent;
+  }
+
+  /* Remove default number input arrows */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+/* ── Typography scale ──────────────────────────────────────────────────────── */
+@layer base {
+  h1 { @apply text-2xl font-semibold tracking-tight text-text-primary; }
+  h2 { @apply text-xl font-semibold tracking-tight text-text-primary; }
+  h3 { @apply text-base font-semibold text-text-primary; }
+  h4 { @apply text-sm font-semibold text-text-secondary; }
+
+  p  { @apply text-sm text-text-secondary leading-relaxed; }
+
+  code { @apply font-mono text-xs bg-surface-overlay px-1.5 py-0.5 rounded; }
+}
+
+/* ── Utility layer additions ───────────────────────────────────────────────── */
+@layer utilities {
+  /* Numeric figures — monospaced numbers in tables */
+  .tabular { font-variant-numeric: tabular-nums; }
+
+  /* Gain / loss quick classes */
+  .text-gain { @apply text-gain-text; }
+  .text-loss { @apply text-loss-text; }
+  .text-warn { @apply text-warn-text; }
+
+  /* Subtle divider */
+  .divider { @apply border-t border-surface-border; }
+}
