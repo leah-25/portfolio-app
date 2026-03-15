@@ -24,4 +24,4 @@ export interface MarketProvider {
   fetchQuotes(symbols: string[], apiKey: string): Promise<Quote[]>;
 }
 
-export type ProviderName = 'fmp';
+export type ProviderName = 'fmp' | 'polygon';

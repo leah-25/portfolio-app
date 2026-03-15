@@ -18,10 +18,11 @@ interface MarketState {
   lastUpdated: number | null;
 
   // Actions
-  setApiKey:          (key: string)  => void;
-  setRefreshInterval: (mins: number) => void;
-  refresh:            (symbols: string[]) => Promise<void>;
-  clearError:         () => void;
+  setApiKey:          (key: string)          => void;
+  setProvider:        (p: ProviderName)      => void;
+  setRefreshInterval: (mins: number)         => void;
+  refresh:            (symbols: string[])    => Promise<void>;
+  clearError:         ()                     => void;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -41,7 +42,8 @@ export const useMarketStore = create<MarketState>()(
       lastUpdated: null,
 
       // ── Actions ──
-      setApiKey: (key)   => set({ apiKey: key.trim(), error: null }),
+      setApiKey:          (key)  => set({ apiKey: key.trim(), error: null }),
+      setProvider:        (p)    => set({ provider: p }),
       setRefreshInterval: (mins) => set({ refreshInterval: Math.max(0, mins) }),
       clearError: ()     => set({ error: null }),
 

@@ -1,10 +1,12 @@
-import { fmpProvider } from './fmp';
+import { fmpProvider }     from './fmp';
+import { polygonProvider } from './polygon';
 import type { MarketProvider, ProviderName, Quote } from './types';
 
 export type { Quote, MarketProvider, ProviderName };
 
 const PROVIDERS: Record<ProviderName, MarketProvider> = {
-  fmp: fmpProvider,
+  fmp:     fmpProvider,
+  polygon: polygonProvider,
 };
 
 /**
