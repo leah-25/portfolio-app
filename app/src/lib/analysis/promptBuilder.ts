@@ -119,13 +119,34 @@ ${riskSection}
 ${holdingLines}
 
 ## Analysis Request
-Please provide a concise, high-signal portfolio analysis covering:
+Please provide a concise, high-signal portfolio analysis. Use exactly this structure with the 5 section headers below, separated by --- dividers:
 
-1. **Overall Assessment** — Is this portfolio well-positioned for the 2030 10× goal? Key strengths and concerns.
-2. **Concentration & Diversification** — Comment on position sizing, sector exposure, and any over/under-weight risks.
-3. **Thesis Drift Warnings** — For positions flagged with thesis drift, assess urgency and recommended action.
-4. **Top Opportunities** — 2–3 specific actions (trim, add, or exit) backed by the thesis data.
-5. **Risk Snapshot** — Macro or sector-level risks the portfolio should watch in the next 12 months.
+## Overall Assessment
+One tight paragraph on whether this portfolio is well-positioned for the 2030 10× goal. Call out the single biggest strength and the single biggest concern.
 
-Be direct, data-driven, and actionable. Use the conviction ratings, lot history, and thesis bodies to inform your recommendations.`;
+---
+
+## Concentration & Diversification
+Comment on position sizing, sector exposure, and over/under-weight risks. Be specific about weights and sectors.
+
+---
+
+## Thesis Drift Warnings
+For each position flagged with thesis drift: state the urgency and a single recommended action. If none flagged, say so briefly. Append [DRIFT] inline after any position symbol you mention that has drift.
+
+---
+
+## Top Opportunities
+Exactly 3 numbered action items (trim, add, or exit). Each should be one sentence naming the ticker and the specific rationale from the thesis/conviction data. Append [OPP] after opportunities and [RISK] after risk-increasing actions.
+
+---
+
+## Risk Snapshot
+2–3 bullet points covering macro or sector-level risks the portfolio should watch in the next 12 months. Be specific to what's actually in the portfolio.
+
+Formatting rules:
+- Use **bold** only for ticker symbols and key metrics.
+- Append [DRIFT], [RISK], or [OPP] inline (no space before) after the relevant word to tag it — e.g. "NVDA[DRIFT]" or "trim AAPL[OPP]".
+- No extra headers, no commentary outside the 5 sections.
+- Be direct, data-driven, and under 400 words total.`;
 }

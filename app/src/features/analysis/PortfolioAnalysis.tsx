@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Sparkles, X, RefreshCw, AlertCircle, Settings2, Copy, Check, Database, BookmarkPlus } from 'lucide-react';
+import { Sparkles, X, RefreshCw, AlertCircle, Settings2, Copy, Check, Database, BookmarkPlus, TriangleAlert, ShieldAlert } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Button from '../../components/ui/Button';
+import Badge from '../../components/ui/Badge';
 import MarkdownBlock from '../../components/ui/MarkdownBlock';
 import { useAIStore } from '../../store/aiStore';
 import { useMarketStore } from '../../store/marketStore';
@@ -46,6 +47,11 @@ export default function PortfolioAnalysis({ open, onClose, holdings, title = 'AI
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveToast, setSaveToast] = useState(false);
+
+  // ── Portfolio-level risk/drift signals ──────────────────────────────────────
+  const driftCount = useMemo(() => holdings.filter(h => h.thesisDrift).length, [holdings]);
+  const highRiskCount = useMemo(() => holdings.filter(h => h.riskLevel === 'high').length, [holdings]);
 
   const abortRef       = useRef<AbortController | null>(null);
   const bodyRef        = useRef<HTMLDivElement>(null);
@@ -169,7 +175,9 @@ export default function PortfolioAnalysis({ open, onClose, holdings, title = 'AI
       },
     });
     setSaved(true);
+    setSaveToast(true);
     setTimeout(() => setSaved(false), 2500);
+    setTimeout(() => setSaveToast(false), 3000);
   }
 
   if (!open) return null;
@@ -185,9 +193,28 @@ export default function PortfolioAnalysis({ open, onClose, holdings, title = 'AI
 
         {/* Header */}
         <div className="flex h-14 items-center justify-between border-b border-surface-border px-5 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <Sparkles size={15} className="text-accent" />
-            <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles size={15} className="text-accent flex-shrink-0" />
+            <h2 className="text-sm font-semibold text-text-primary truncate">{title}</h2>
+
+            {/* Portfolio signal badges — show when not running */}
+            {!isRunning && holdings.length > 0 && (
+              <div className="flex items-center gap-1 ml-0.5">
+                {driftCount > 0 && (
+                  <Badge variant="warn" size="sm" dot>
+                    <TriangleAlert size={9} className="mr-0.5" />
+                    {driftCount} drift
+                  </Badge>
+                )}
+                {highRiskCount > 0 && (
+                  <Badge variant="loss" size="sm" dot>
+                    <ShieldAlert size={9} className="mr-0.5" />
+                    {highRiskCount} high-risk
+                  </Badge>
+                )}
+              </div>
+            )}
+
             {isRunning && (
               <span className="ml-1 inline-flex items-center gap-1.5 text-xs text-text-muted">
                 <RefreshCw size={11} className="animate-spin" />
@@ -290,7 +317,9 @@ export default function PortfolioAnalysis({ open, onClose, holdings, title = 'AI
           {/* Idle */}
           {hasApiAccess && status === 'idle' && (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
-              <Sparkles size={28} className="text-accent opacity-60" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-subtle border border-accent-border/30">
+                <Sparkles size={20} className="text-accent" />
+              </div>
               {holdings.length === 0 ? (
                 <div>
                   <p className="text-sm font-medium text-text-primary mb-1">No holdings to analyze</p>
@@ -300,11 +329,27 @@ export default function PortfolioAnalysis({ open, onClose, holdings, title = 'AI
                 <>
                   <div>
                     <p className="text-sm font-medium text-text-primary mb-1">Ready to analyze</p>
-                    <p className="text-xs text-text-muted">
-                      Click below to generate insights for {holdings.length} position{holdings.length !== 1 ? 's' : ''}.
+                    <p className="text-xs text-text-muted mb-3">
+                      {holdings.length} position{holdings.length !== 1 ? 's' : ''} · Claude Opus 4.6
                     </p>
+                    {/* Pre-flight signals */}
+                    {(driftCount > 0 || highRiskCount > 0) && (
+                      <div className="flex items-center justify-center gap-2 mb-1">
+                        {driftCount > 0 && (
+                          <Badge variant="warn" dot>
+                            {driftCount} thesis drift{driftCount !== 1 ? 's' : ''}
+                          </Badge>
+                        )}
+                        {highRiskCount > 0 && (
+                          <Badge variant="loss" dot>
+                            {highRiskCount} high-risk
+                          </Badge>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <Button variant="primary" size="sm" onClick={run}>
+                    <Sparkles size={13} className="mr-1.5" />
                     Run Analysis
                   </Button>
                 </>
@@ -341,6 +386,16 @@ export default function PortfolioAnalysis({ open, onClose, holdings, title = 'AI
               {Object.keys(quotes).length > 0 && ` · ${Object.keys(quotes).length} live prices`}
               {isCached && analysisCache && ` · cached ${formatAge(analysisCache.timestamp)}`}
             </p>
+          </div>
+        )}
+
+        {/* Save toast */}
+        {saveToast && (
+          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 animate-fade-up pointer-events-none z-10">
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-surface-raised border border-surface-border shadow-card-lg text-sm text-text-primary">
+              <Check size={14} className="text-gain-text flex-shrink-0" />
+              Saved to Research Notes
+            </div>
           </div>
         )}
       </div>
