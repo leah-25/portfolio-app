@@ -1,63 +1,13 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Sparkles, X, RefreshCw, AlertCircle, Settings2, Copy, Check, Database } from 'lucide-react';
+import { Sparkles, X, RefreshCw, AlertCircle, Settings2, Copy, Check, Database, BookmarkPlus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Button from '../../components/ui/Button';
+import MarkdownBlock from '../../components/ui/MarkdownBlock';
 import { useAIStore } from '../../store/aiStore';
 import { useMarketStore } from '../../store/marketStore';
+import { useResearchNotesStore } from '../../store/researchNotesStore';
 import { analyzePortfolio, buildCacheKey } from '../../lib/analysis/portfolioAnalysis';
 import type { HoldingRecord } from '../holdings/types';
-
-// ── Simple markdown renderer ───────────────────────────────────────────────────
-
-function MarkdownBlock({ text }: { text: string }) {
-  const lines = text.split('\n');
-  const elements: React.ReactNode[] = [];
-  let i = 0;
-
-  function renderInline(raw: string) {
-    const parts = raw.split(/(\*\*[^*]+\*\*)/g);
-    return parts.map((p, idx) =>
-      p.startsWith('**') && p.endsWith('**')
-        ? <strong key={idx} className="font-semibold text-text-primary">{p.slice(2, -2)}</strong>
-        : <span key={idx}>{p}</span>
-    );
-  }
-
-  while (i < lines.length) {
-    const line = lines[i];
-    if (line.startsWith('## ')) {
-      elements.push(
-        <h2 key={i} className="mt-5 mb-2 text-sm font-semibold text-text-primary tracking-wide uppercase">
-          {line.slice(3)}
-        </h2>
-      );
-    } else if (line.startsWith('### ')) {
-      elements.push(
-        <h3 key={i} className="mt-4 mb-1 text-sm font-medium text-text-primary">
-          {line.slice(4)}
-        </h3>
-      );
-    } else if (/^[1-9]\d*\./.test(line) || line.startsWith('- ') || line.startsWith('• ')) {
-      const content = line.replace(/^[1-9]\d*\.\s*/, '').replace(/^[-•]\s*/, '');
-      elements.push(
-        <li key={i} className="ml-4 text-sm text-text-secondary leading-relaxed list-disc">
-          {renderInline(content)}
-        </li>
-      );
-    } else if (line.trim() === '') {
-      // skip blank lines
-    } else {
-      elements.push(
-        <p key={i} className="text-sm text-text-secondary leading-relaxed mb-2">
-          {renderInline(line)}
-        </p>
-      );
-    }
-    i++;
-  }
-
-  return <div className="space-y-0.5">{elements}</div>;
-}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -83,23 +33,24 @@ interface PortfolioAnalysisProps {
 export default function PortfolioAnalysis({ open, onClose, holdings }: PortfolioAnalysisProps) {
   const { anthropicKey, analysisCache, setAnalysisCache } = useAIStore();
   const { quotes } = useMarketStore();
+  const { saveNote } = useResearchNotesStore();
 
   const [status, setStatus] = useState<'idle' | 'loading' | 'streaming' | 'done' | 'error'>('idle');
   const [text, setText] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
 
-  const abortRef      = useRef<AbortController | null>(null);
-  const bodyRef       = useRef<HTMLDivElement>(null);
-  const accumulatedRef = useRef('');  // captures full text for caching
-  const statusRef     = useRef(status);
-  statusRef.current = status;
+  const abortRef       = useRef<AbortController | null>(null);
+  const bodyRef        = useRef<HTMLDivElement>(null);
+  const accumulatedRef = useRef('');
+  const statusRef      = useRef(status);
+  statusRef.current    = status;
 
-  // Stable refs so the open-effect always reads latest values without re-running
-  const cacheRef      = useRef(analysisCache);
-  cacheRef.current    = analysisCache;
-  const currentKey    = useMemo(() => buildCacheKey(holdings), [holdings]);
-  const currentKeyRef = useRef(currentKey);
+  const cacheRef       = useRef(analysisCache);
+  cacheRef.current     = analysisCache;
+  const currentKey     = useMemo(() => buildCacheKey(holdings), [holdings]);
+  const currentKeyRef  = useRef(currentKey);
   currentKeyRef.current = currentKey;
 
   // On open: load from cache if portfolio hasn't changed, else reset to idle
@@ -117,14 +68,14 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
     }
   }, [open]);
 
-  // Auto-scroll to bottom while streaming
+  // Auto-scroll while streaming
   useEffect(() => {
     if (status === 'streaming' && bodyRef.current) {
       bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
     }
   }, [text, status]);
 
-  // Escape key to close
+  // Escape key
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -138,14 +89,13 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
     return () => { document.body.style.overflow = ''; };
   }, [open]);
 
-  // Stop any in-flight request when closed
+  // Abort on close
   useEffect(() => {
     if (!open) abortRef.current?.abort();
   }, [open]);
 
   const run = useCallback(async () => {
     if (!anthropicKey) return;
-    // Prevent duplicate requests while one is already in flight
     if (statusRef.current === 'loading' || statusRef.current === 'streaming') return;
 
     abortRef.current?.abort();
@@ -155,6 +105,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
     accumulatedRef.current = '';
     setText('');
     setError('');
+    setSaved(false);
     setStatus('loading');
 
     try {
@@ -170,7 +121,6 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
           setText(prev => prev + chunk);
         },
       });
-      // Persist result so subsequent opens skip the API call
       setAnalysisCache(currentKeyRef.current, accumulatedRef.current);
       setStatus('done');
     } catch (err) {
@@ -186,17 +136,44 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
     setTimeout(() => setCopied(false), 2000);
   }
 
+  function handleSave() {
+    const totalCost = holdings.reduce((s, h) => s + h.costBasis * h.quantity, 0);
+    const totalValue = holdings.reduce((s, h) => s + h.currentValue, 0);
+    saveNote({
+      timestamp: Date.now(),
+      aiResponse: text,
+      symbols: holdings.map((h) => h.symbol),
+      portfolioSnapshot: {
+        totalValue,
+        totalCost,
+        holdings: holdings.map((h) => ({
+          symbol: h.symbol,
+          name: h.name,
+          type: h.type,
+          sector: h.sector,
+          weight: h.weight,
+          currentValue: h.currentValue,
+          pnl: h.pnl,
+          pnlPct: h.pnlPct,
+          conviction: h.conviction,
+          riskLevel: h.riskLevel,
+          thesisDrift: h.thesisDrift,
+        })),
+      },
+    });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  }
+
   if (!open) return null;
 
-  const isRunning  = status === 'loading' || status === 'streaming';
-  const isCached   = !isRunning && status === 'done' && analysisCache?.key === currentKey;
+  const isRunning = status === 'loading' || status === 'streaming';
+  const isCached  = !isRunning && status === 'done' && analysisCache?.key === currentKey;
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Panel */}
       <div className="relative ml-auto flex h-full w-full max-w-2xl flex-col bg-surface-overlay border-l border-surface-border shadow-2xl animate-slide-in-right">
 
         {/* Header */}
@@ -217,16 +194,28 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {status === 'done' && text && (
-              <button
-                onClick={handleCopy}
-                title="Copy to clipboard"
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-text-muted hover:text-text-primary hover:bg-surface-raised transition-colors"
-              >
-                {copied ? <Check size={12} className="text-gain-text" /> : <Copy size={12} />}
-                {copied ? 'Copied' : 'Copy'}
-              </button>
+              <>
+                <button
+                  onClick={handleCopy}
+                  title="Copy to clipboard"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-text-muted hover:text-text-primary hover:bg-surface-raised transition-colors"
+                >
+                  {copied ? <Check size={12} className="text-gain-text" /> : <Copy size={12} />}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saved}
+                  title="Save as research note"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-text-muted hover:text-text-primary hover:bg-surface-raised transition-colors disabled:opacity-60"
+                >
+                  {saved
+                    ? <><Check size={12} className="text-gain-text" />Saved</>
+                    : <><BookmarkPlus size={12} />Save</>}
+                </button>
+              </>
             )}
             {(status === 'done' || status === 'error') && (
               <button
@@ -259,7 +248,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
         {/* Body */}
         <div ref={bodyRef} className="flex-1 overflow-y-auto px-6 py-5">
 
-          {/* No API key state */}
+          {/* No API key */}
           {!anthropicKey && (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-subtle">
@@ -280,7 +269,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
             </div>
           )}
 
-          {/* Error state */}
+          {/* Error */}
           {anthropicKey && status === 'error' && (
             <div className="flex items-start gap-3 p-4 rounded-lg bg-loss-subtle border border-loss-border text-sm mb-4">
               <AlertCircle size={15} className="text-loss-text mt-0.5 flex-shrink-0" />
@@ -291,7 +280,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
             </div>
           )}
 
-          {/* Idle state */}
+          {/* Idle */}
           {anthropicKey && status === 'idle' && (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
               <Sparkles size={28} className="text-accent opacity-60" />

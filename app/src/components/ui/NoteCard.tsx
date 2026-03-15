@@ -2,11 +2,11 @@ import { ArrowRight } from 'lucide-react';
 import { formatRelative } from '../../lib/formatters';
 import Tag from './Tag';
 
-type NoteType = 'weekly' | 'quarterly';
+type NoteType = 'weekly' | 'quarterly' | 'ai';
 
 interface NoteCardProps {
   type: NoteType;
-  period: string;          // e.g. "Week 12 · 2025" or "Q1 2025"
+  period: string;          // e.g. "Week 12 · 2025" or "Q1 2025" or "Mar 15, 2026"
   title: string;
   excerpt?: string;        // 2–3 sentence preview of body
   tags?: string[];         // holding symbols or topic labels
@@ -17,6 +17,7 @@ interface NoteCardProps {
 const TYPE_CONFIG: Record<NoteType, { label: string; barColor: string; labelColor: string }> = {
   weekly:    { label: 'Weekly',    barColor: 'bg-accent',       labelColor: 'text-accent' },
   quarterly: { label: 'Quarterly', barColor: 'bg-warn-DEFAULT', labelColor: 'text-warn-text' },
+  ai:        { label: 'AI',        barColor: 'bg-[#a855f7]',    labelColor: 'text-[#a855f7]' },
 };
 
 export default function NoteCard({
