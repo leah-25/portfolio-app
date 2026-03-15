@@ -4,7 +4,9 @@ import PageHeader from '../../components/layout/PageHeader';
 import PageContainer from '../../components/layout/PageContainer';
 import { Table, Thead, Tbody, Tr, Th, Td, TableEmpty } from '../../components/ui/Table';
 import Badge from '../../components/ui/Badge';
+import ConvictionPips from '../../components/ui/ConvictionPips';
 import HoldingDrawer from './HoldingDrawer';
+import { RISK_VARIANT } from './constants';
 import { formatCurrency, formatPct, formatDate } from '../../lib/formatters';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -175,24 +177,6 @@ function FilterGroup<T extends string>({
   );
 }
 
-// ── Conviction pips ───────────────────────────────────────────────────────────
-
-function ConvictionPips({ value }: { value: number | null }) {
-  if (value == null) return <span className="text-text-muted text-xs">—</span>;
-  return (
-    <div className="flex gap-0.5 items-center">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div
-          key={i}
-          className={[
-            'w-1.5 h-3 rounded-sm',
-            i < value ? 'bg-accent' : 'bg-surface-border',
-          ].join(' ')}
-        />
-      ))}
-    </div>
-  );
-}
 
 // ── Review date cell ──────────────────────────────────────────────────────────
 
@@ -262,9 +246,6 @@ const RISK_OPTIONS:   PillOption<RiskFilter>[]   = [
   { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' },
 ];
 
-const RISK_VARIANT: Record<string, 'gain' | 'warn' | 'loss'> = {
-  low: 'gain', medium: 'warn', high: 'loss',
-};
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 

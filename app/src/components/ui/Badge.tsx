@@ -2,7 +2,7 @@
 // Use for: P&L sign, risk status, asset type, conviction level
 // Not for: content labels/filters (use Tag for that)
 
-type BadgeVariant = 'default' | 'gain' | 'loss' | 'warn' | 'accent' | 'muted';
+export type BadgeVariant = 'default' | 'gain' | 'loss' | 'warn' | 'accent' | 'muted';
 type BadgeSize    = 'sm' | 'md';
 
 interface BadgeProps {

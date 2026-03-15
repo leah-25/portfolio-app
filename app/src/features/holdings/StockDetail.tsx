@@ -8,6 +8,7 @@ import PageContainer, { PageGrid } from '../../components/layout/PageContainer';
 import Card, { CardHeader, CardDivider } from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
 import Tag from '../../components/ui/Tag';
+import ConvictionPips from '../../components/ui/ConvictionPips';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
 import EmptyState from '../../components/ui/EmptyState';
 import { formatCurrency, formatPct, formatDate } from '../../lib/formatters';
@@ -188,24 +189,6 @@ function Section({ title, icon: Icon, children }: {
   );
 }
 
-// ── Conviction pips ───────────────────────────────────────────────────────────
-
-const CONVICTION_LABEL = ['', 'Very Low', 'Low', 'Medium', 'High', 'Very High'];
-
-function ConvictionPips({ value, size = 'md' }: { value: number; size?: 'sm' | 'md' }) {
-  const h = size === 'sm' ? 'h-2.5' : 'h-3.5';
-  const w = size === 'sm' ? 'w-1.5' : 'w-2';
-  return (
-    <div className="flex items-center gap-1.5">
-      <div className="flex gap-0.5">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className={`${w} ${h} rounded-sm ${i < value ? 'bg-accent' : 'bg-surface-border'}`} />
-        ))}
-      </div>
-      <span className="text-xs text-text-muted">{CONVICTION_LABEL[value]}</span>
-    </div>
-  );
-}
 
 // ── KPI status icon ───────────────────────────────────────────────────────────
 
@@ -290,7 +273,7 @@ export default function StockDetail() {
             {/* Current thesis */}
             <Section title="Current Thesis" icon={BookOpen}>
               <div className="flex items-center justify-between mb-3">
-                <ConvictionPips value={data.conviction} />
+                <ConvictionPips value={data.conviction} showLabel />
                 <span className="text-2xs text-text-muted">
                   Updated {formatDate(data.thesisUpdatedAt)}
                 </span>

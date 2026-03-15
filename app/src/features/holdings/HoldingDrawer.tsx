@@ -4,7 +4,9 @@ import { Link } from 'react-router-dom';
 import Badge from '../../components/ui/Badge';
 import Tag from '../../components/ui/Tag';
 import Button from '../../components/ui/Button';
+import ConvictionPips from '../../components/ui/ConvictionPips';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
+import { RISK_VARIANT, TYPE_VARIANT } from './constants';
 import { formatCurrency, formatPct, formatDate, formatRelative } from '../../lib/formatters';
 import type { HoldingRecord } from './Holdings';
 
@@ -13,25 +15,6 @@ interface HoldingDrawerProps {
   onClose: () => void;
 }
 
-const CONVICTION_LABELS: Record<number, string> = {
-  1: 'Very Low',
-  2: 'Low',
-  3: 'Medium',
-  4: 'High',
-  5: 'Very High',
-};
-
-const TYPE_VARIANT: Record<string, 'default' | 'accent' | 'warn' | 'muted'> = {
-  stock:  'accent',
-  crypto: 'warn',
-  etf:    'default',
-};
-
-const RISK_VARIANT: Record<string, 'gain' | 'warn' | 'loss'> = {
-  low:    'gain',
-  medium: 'warn',
-  high:   'loss',
-};
 
 export default function HoldingDrawer({ holding, onClose }: HoldingDrawerProps) {
   // Close on Escape key
@@ -162,10 +145,7 @@ function DrawerContent({ holding, onClose }: { holding: HoldingRecord; onClose: 
           <div className="flex items-center justify-between mb-3">
             <p className="text-2xs font-semibold uppercase tracking-widest text-text-muted">Investment Thesis</p>
             {holding.conviction != null && (
-              <div className="flex items-center gap-1.5">
-                <ConvictionPips value={holding.conviction} />
-                <span className="text-2xs text-text-muted">{CONVICTION_LABELS[holding.conviction]}</span>
-              </div>
+              <ConvictionPips value={holding.conviction} showLabel />
             )}
           </div>
 
@@ -247,18 +227,3 @@ function StatCell({
   );
 }
 
-function ConvictionPips({ value }: { value: number }) {
-  return (
-    <div className="flex gap-0.5">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <div
-          key={i}
-          className={[
-            'w-1.5 h-3 rounded-sm',
-            i < value ? 'bg-accent' : 'bg-surface-border',
-          ].join(' ')}
-        />
-      ))}
-    </div>
-  );
-}
