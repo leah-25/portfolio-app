@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, SlidersHorizontal, TrendingUp, TrendingDown, RefreshCw, AlertCircle, Settings2 } from 'lucide-react';
+import { Search, SlidersHorizontal, TrendingUp, TrendingDown, RefreshCw, AlertCircle, Settings2, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../../components/layout/PageHeader';
 import PageContainer from '../../components/layout/PageContainer';
@@ -7,6 +7,7 @@ import { Table, Thead, Tbody, Tr, Th, Td, TableEmpty } from '../../components/ui
 import Badge from '../../components/ui/Badge';
 import ConvictionPips from '../../components/ui/ConvictionPips';
 import HoldingDrawer from './HoldingDrawer';
+import PortfolioAnalysis from '../analysis/PortfolioAnalysis';
 import { RISK_VARIANT } from './constants';
 import { useMarketStore } from '../../store/marketStore';
 import { formatCurrency, formatPct, formatDate } from '../../lib/formatters';
@@ -257,8 +258,9 @@ export default function Holdings() {
   const [thesisFilter, setThesisFilter] = useState<ThesisFilter>('all');
   const [riskFilter,   setRiskFilter]   = useState<RiskFilter>('all');
   const [sort,         setSort]         = useState<{ col: SortCol; dir: SortDir }>({ col: 'currentValue', dir: 'desc' });
-  const [selectedId,   setSelectedId]   = useState<string | null>(null);
-  const [showFilters,  setShowFilters]  = useState(false);
+  const [selectedId,    setSelectedId]    = useState<string | null>(null);
+  const [showFilters,   setShowFilters]   = useState(false);
+  const [showAnalysis,  setShowAnalysis]  = useState(false);
 
   // ── Market data ───────────────────────────────────────────────────────────
   const { quotes, loading, error, lastUpdated, refreshInterval, refresh, clearError } =
@@ -403,6 +405,13 @@ export default function Holdings() {
                   <RefreshCw size={13} />
                 </button>
               )}
+              <button
+                onClick={() => setShowAnalysis(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent-hover transition-colors"
+              >
+                <Sparkles size={12} />
+                Analyze
+              </button>
             </div>
           </div>
 
@@ -581,6 +590,13 @@ export default function Holdings() {
       <HoldingDrawer
         holding={selected}
         onClose={() => setSelectedId(null)}
+      />
+
+      {/* ── AI analysis panel ─────────────────────────────────────────── */}
+      <PortfolioAnalysis
+        open={showAnalysis}
+        onClose={() => setShowAnalysis(false)}
+        holdings={enriched}
       />
     </>
   );

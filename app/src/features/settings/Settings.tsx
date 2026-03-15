@@ -7,13 +7,18 @@ import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
 import { useMarketStore } from '../../store/marketStore';
+import { useAIStore } from '../../store/aiStore';
 
 export default function Settings() {
   const { apiKey, refreshInterval, setApiKey, setRefreshInterval } = useMarketStore();
+  const { anthropicKey, setAnthropicKey } = useAIStore();
 
   const [keyDraft,      setKeyDraft]      = useState(apiKey);
   const [intervalDraft, setIntervalDraft] = useState(String(refreshInterval));
   const [saved,         setSaved]         = useState(false);
+
+  const [aiKeyDraft, setAiKeyDraft] = useState(anthropicKey);
+  const [aiSaved,    setAiSaved]    = useState(false);
 
   function handleSave() {
     setApiKey(keyDraft);
@@ -23,7 +28,14 @@ export default function Settings() {
     setTimeout(() => setSaved(false), 2500);
   }
 
-  const dirty = keyDraft !== apiKey || intervalDraft !== String(refreshInterval);
+  function handleAiSave() {
+    setAnthropicKey(aiKeyDraft);
+    setAiSaved(true);
+    setTimeout(() => setAiSaved(false), 2500);
+  }
+
+  const dirty   = keyDraft !== apiKey || intervalDraft !== String(refreshInterval);
+  const aiDirty = aiKeyDraft !== anthropicKey;
 
   return (
     <>
@@ -101,6 +113,55 @@ export default function Settings() {
                   Save API settings
                 </Button>
                 {saved && (
+                  <span className="flex items-center gap-1.5 text-xs text-gain-text">
+                    <CheckCircle2 size={13} />
+                    Saved
+                  </span>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          {/* AI Analysis */}
+          <Card>
+            <CardHeader
+              title="AI Analysis"
+              subtitle="Claude API key for portfolio analysis"
+            />
+            <div className="space-y-4">
+              <div className="p-3 rounded-lg bg-accent-subtle border border-accent-border/40 text-xs text-text-secondary leading-relaxed">
+                The <strong className="text-text-primary">Analyze Portfolio</strong> feature uses{' '}
+                <strong className="text-text-primary">Claude</strong> (Anthropic) to generate
+                investment insights from your holdings data.
+                Get an API key at{' '}
+                <a
+                  href="https://console.anthropic.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent underline hover:text-accent-hover"
+                >
+                  console.anthropic.com
+                </a>
+                . Your key is stored locally and never sent to any server other than Anthropic.
+              </div>
+              <Input
+                label="Anthropic API key"
+                type="password"
+                placeholder="sk-ant-…"
+                value={aiKeyDraft}
+                onChange={(e) => { setAiKeyDraft(e.target.value); setAiSaved(false); }}
+                hint={anthropicKey ? 'Key saved — portfolio analysis is enabled.' : 'Required for AI portfolio analysis.'}
+              />
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleAiSave}
+                  disabled={!aiDirty && !aiSaved}
+                >
+                  Save AI key
+                </Button>
+                {aiSaved && (
                   <span className="flex items-center gap-1.5 text-xs text-gain-text">
                     <CheckCircle2 size={13} />
                     Saved
