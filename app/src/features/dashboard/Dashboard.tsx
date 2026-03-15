@@ -1,3 +1,4 @@
+import { useMemo, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   RefreshCw, TrendingUp, TrendingDown, ChevronRight,
@@ -13,57 +14,15 @@ import Badge from '../../components/ui/Badge';
 import Tag from '../../components/ui/Tag';
 import NoteCard from '../../components/ui/NoteCard';
 import Button from '../../components/ui/Button';
+import { useHoldingsStore } from '../../store/holdingsStore';
+import { useMarketStore } from '../../store/marketStore';
 import { formatCompact, formatPct, formatDate } from '../../lib/formatters';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Mock data — replace with Zustand store data in Phase 2
+// Static editorial mock content — no store exists yet for these
 // ─────────────────────────────────────────────────────────────────────────────
 
-const KPI = {
-  totalValue:      214_500_000,   // ₩
-  costBasis:       138_200_000,   // ₩
-  unrealisedPnl:    76_300_000,   // ₩
-  pnlPct:               0.552,   // 55.2%
-  target10x:     1_382_000_000,   // ₩ — 10× cost basis
-  targetYear:            2030,
-  progress10x:          0.1554,  // 214.5M / 1382M
-  requiredCagr:          0.454,  // to hit target from today in ~4.8 yrs
-  positionCount:            8,
-} as const;
-
-interface HoldingRow {
-  symbol: string;
-  name:   string;
-  type:   'stock' | 'crypto';
-  value:  number;
-  weight: number;  // 0–1
-  pnlPct: number;  // signed, e.g. 0.829 = +82.9%
-}
-
-const TOP_HOLDINGS: HoldingRow[] = [
-  { symbol: 'NVDA', name: 'NVIDIA Corp',  type: 'stock',  value: 60_000_000, weight: 0.280, pnlPct: +0.829 },
-  { symbol: 'MSFT', name: 'Microsoft',    type: 'stock',  value: 38_600_000, weight: 0.180, pnlPct: +0.441 },
-  { symbol: 'BTC',  name: 'Bitcoin',      type: 'crypto', value: 32_200_000, weight: 0.150, pnlPct: +0.975 },
-  { symbol: 'TSLA', name: 'Tesla',        type: 'stock',  value: 25_700_000, weight: 0.120, pnlPct: -0.126 },
-  { symbol: 'AMZN', name: 'Amazon',       type: 'stock',  value: 21_400_000, weight: 0.100, pnlPct: +0.289 },
-];
-
-interface AllocationSlice {
-  symbol: string;
-  name:   string;
-  pct:    number;
-  color:  string;
-}
-
-// Restrained palette: indigo family for stocks, amber for crypto, zinc for rest
-const ALLOCATION: AllocationSlice[] = [
-  { symbol: 'NVDA',  name: 'NVIDIA',      pct: 28.0, color: '#6366f1' },
-  { symbol: 'MSFT',  name: 'Microsoft',   pct: 18.0, color: '#818cf8' },
-  { symbol: 'BTC',   name: 'Bitcoin',     pct: 15.0, color: '#f59e0b' },
-  { symbol: 'TSLA',  name: 'Tesla',       pct: 12.0, color: '#a78bfa' },
-  { symbol: 'AMZN',  name: 'Amazon',      pct: 10.0, color: '#4ade80' },
-  { symbol: 'Other', name: 'Other (3)',   pct: 17.0, color: '#3f3f46' },
-];
+const TARGET_YEAR = 2030;
 
 interface NoteItem {
   id:        string;
@@ -90,18 +49,18 @@ const RECENT_NOTES: NoteItem[] = [
     type: 'quarterly',
     period: 'Q1 2025',
     title: 'Q1 review — thesis drift, rebalance decisions, CAGR pacing',
-    excerpt: 'NVDA drifted +3% above target weight. Trimmed and redeployed to AMZN. All core theses intact. Portfolio tracking at 15.5% of 10x goal.',
+    excerpt: 'NVDA drifted +3% above target weight. Trimmed and redeployed to AMZN. All core theses intact. Portfolio tracking at 15.5% of 10× goal.',
     tags: ['rebalance', 'NVDA', 'AMZN', 'quarterly'],
     updatedAt: '2025-03-31T12:00:00Z',
   },
 ];
 
 interface RiskItem {
-  id:           string;
-  kind:         'risk' | 'catalyst';
-  holding:      string | null;
-  title:        string;
-  status:       'open' | 'monitoring' | 'resolved';
+  id:            string;
+  kind:          'risk' | 'catalyst';
+  holding:       string | null;
+  title:         string;
+  status:        'open' | 'monitoring' | 'resolved';
   expectedDate?: string;
 }
 
@@ -135,30 +94,31 @@ const LAST_REBALANCE = {
     'NVDA drifted above target following the January rally. Rebalanced to fund underweight AMZN position. No thesis changes — purely a weight correction.',
 };
 
-const QUICK_NAV: { to: string; Icon: LucideIcon; label: string; meta: string }[] = [
-  { to: '/holdings',  Icon: Layers,        label: 'Holdings',  meta: '8 positions'   },
-  { to: '/thesis',    Icon: FileText,       label: 'Thesis',    meta: '1 drift alert' },
-  { to: '/notes',     Icon: BookOpen,       label: 'Notes',     meta: '14 entries'    },
-  { to: '/rebalance', Icon: ArrowLeftRight, label: 'Rebalance', meta: 'Last: Mar 15'  },
-  { to: '/risk',      Icon: ShieldAlert,    label: 'Risk',      meta: '3 open items'  },
-  { to: '/settings',  Icon: Settings,       label: 'Settings',  meta: 'Configure'     },
-];
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Sub-components (Dashboard-specific, not reused elsewhere)
+// Color palette for allocation donut
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── KPI card ──────────────────────────────────────────────────────────────────
+// Stocks → indigo/violet, Crypto → amber/orange, ETF → emerald, Other → zinc
+const TYPE_PALETTE: Record<string, string[]> = {
+  stock:  ['#6366f1', '#818cf8', '#a78bfa', '#c4b5fd', '#7c3aed'],
+  crypto: ['#f59e0b', '#fb923c', '#fbbf24'],
+  etf:    ['#4ade80', '#34d399', '#6ee7b7'],
+};
+const FALLBACK_COLORS = ['#6366f1', '#818cf8', '#f59e0b', '#a78bfa', '#4ade80', '#38bdf8', '#fb923c'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-components
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface KpiCardProps {
   label:    string;
   value:    string;
   positive?: boolean;
   negative?: boolean;
-  change?:   string;   // pre-formatted "+55.2%"
+  change?:   string;
   sub?:      string;
-  progress?: number;   // 0–1 → renders mini progress bar
-  accent?:   boolean;  // primary card gets indigo border tint
+  progress?: number;  // 0–1
+  accent?:   boolean;
 }
 
 function KpiCard({ label, value, positive, negative, change, sub, progress, accent }: KpiCardProps) {
@@ -175,12 +135,9 @@ function KpiCard({ label, value, positive, negative, change, sub, progress, acce
       <span className="text-2xs font-semibold uppercase tracking-widest text-text-muted">
         {label}
       </span>
-
       <span className={['text-2xl font-semibold num leading-none', valueClass].join(' ')}>
         {value}
       </span>
-
-      {/* Change pill */}
       {change && (
         <div className={[
           'flex items-center gap-1 text-xs num font-medium',
@@ -190,16 +147,11 @@ function KpiCard({ label, value, positive, negative, change, sub, progress, acce
           {change}
         </div>
       )}
-
-      {/* Plain sub-text (no progress bar) */}
       {sub && progress == null && (
         <span className="text-xs text-text-muted leading-snug">{sub}</span>
       )}
-
-      {/* Progress bar + sub-text */}
       {progress != null && (
         <div className="space-y-2">
-          {/* Track */}
           <div className="relative h-1.5 rounded-full bg-surface-overlay overflow-hidden">
             <div
               className="absolute inset-y-0 left-0 rounded-full bg-accent transition-all duration-700"
@@ -213,13 +165,8 @@ function KpiCard({ label, value, positive, negative, change, sub, progress, acce
   );
 }
 
-// ── Section title with "View all" link ────────────────────────────────────────
-
 function SectionHead({
-  title,
-  sub,
-  to,
-  linkLabel = 'View all',
+  title, sub, to, linkLabel = 'View all',
 }: {
   title: string;
   sub?: string;
@@ -243,7 +190,7 @@ function SectionHead({
   );
 }
 
-// ── Allocation donut custom tooltip ───────────────────────────────────────────
+interface AllocationSlice { symbol: string; name: string; pct: number; color: string; }
 
 function DonutTooltip({ active, payload }: { active?: boolean; payload?: { payload: AllocationSlice }[] }) {
   if (!active || !payload?.length) return null;
@@ -256,49 +203,29 @@ function DonutTooltip({ active, payload }: { active?: boolean; payload?: { paylo
   );
 }
 
-// ── Compact risk / catalyst row ───────────────────────────────────────────────
-
 function RiskRow({ item }: { item: RiskItem }) {
-  const statusVariant = {
-    open:       'warn',
-    monitoring: 'default',
-    resolved:   'gain',
-  } as const;
-
+  const statusVariant = { open: 'warn', monitoring: 'default', resolved: 'gain' } as const;
   const KindIcon = item.kind === 'catalyst' ? Zap : AlertCircle;
 
   return (
     <div className="group flex items-start gap-3 py-3 border-b border-surface-border last:border-0 cursor-default">
-      {/* Kind icon */}
       <div className={[
         'mt-0.5 flex-shrink-0 h-5 w-5 rounded flex items-center justify-center',
-        item.kind === 'catalyst'
-          ? 'bg-accent-subtle text-accent'
-          : 'bg-surface-overlay text-text-muted',
+        item.kind === 'catalyst' ? 'bg-accent-subtle text-accent' : 'bg-surface-overlay text-text-muted',
       ].join(' ')}>
         <KindIcon size={11} strokeWidth={2.5} />
       </div>
-
-      {/* Content */}
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium text-text-primary leading-snug line-clamp-2">
-          {item.title}
-        </p>
+        <p className="text-xs font-medium text-text-primary leading-snug line-clamp-2">{item.title}</p>
         <div className="flex items-center gap-2 mt-1.5">
-          <Badge variant={statusVariant[item.status]} dot size="sm">
-            {item.status}
-          </Badge>
+          <Badge variant={statusVariant[item.status]} dot size="sm">{item.status}</Badge>
           {item.holding && <Tag size="xs">{item.holding}</Tag>}
-          {item.expectedDate && (
-            <span className="text-2xs text-text-muted">{item.expectedDate}</span>
-          )}
+          {item.expectedDate && <span className="text-2xs text-text-muted">{item.expectedDate}</span>}
         </div>
       </div>
     </div>
   );
 }
-
-// ── Quick navigation tile ─────────────────────────────────────────────────────
 
 function QuickNavTile({ to, Icon, label, meta }: { to: string; Icon: LucideIcon; label: string; meta: string }) {
   return (
@@ -307,11 +234,7 @@ function QuickNavTile({ to, Icon, label, meta }: { to: string; Icon: LucideIcon;
       className="group flex flex-col gap-2.5 rounded-card border border-surface-border bg-surface-raised p-4 transition-all duration-150 hover:border-accent/30 hover:bg-surface-overlay hover:shadow-card-md"
     >
       <div className="flex items-center justify-between">
-        <Icon
-          size={16}
-          strokeWidth={1.75}
-          className="text-text-muted group-hover:text-accent transition-colors duration-150"
-        />
+        <Icon size={16} strokeWidth={1.75} className="text-text-muted group-hover:text-accent transition-colors duration-150" />
         <ChevronRight size={12} className="text-surface-muted group-hover:text-text-muted transition-colors" />
       </div>
       <div>
@@ -327,18 +250,119 @@ function QuickNavTile({ to, Icon, label, meta }: { to: string; Icon: LucideIcon;
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const maxWeight = Math.max(...TOP_HOLDINGS.map((h) => h.weight));
+  const { holdings } = useHoldingsStore();
+  const { quotes, loading, lastUpdated, refresh } = useMarketStore();
+
+  // ── Market data refresh ──────────────────────────────────────────────────
+  const allSymbols = useMemo(() => holdings.map((h) => h.symbol), [holdings]);
+  const doRefresh  = useCallback(() => refresh(allSymbols), [refresh, allSymbols]);
+  useEffect(() => { doRefresh(); }, [doRefresh]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Enrich with live prices ──────────────────────────────────────────────
+  const enriched = useMemo(() =>
+    holdings.map((h) => {
+      const q = quotes[h.symbol];
+      if (!q) return h;
+      const currentValue = h.quantity * q.price;
+      const totalCost    = h.quantity * h.costBasis;
+      const pnl          = currentValue - totalCost;
+      const pnlPct       = totalCost > 0 ? (pnl / totalCost) * 100 : 0;
+      return { ...h, currentValue, pnl, pnlPct };
+    }),
+    [holdings, quotes],
+  );
+
+  // ── Recompute weights from live values ──────────────────────────────────
+  const totalValue = useMemo(() => enriched.reduce((s, h) => s + h.currentValue, 0), [enriched]);
+
+  const withWeights = useMemo(() =>
+    enriched.map((h) => ({
+      ...h,
+      weight: totalValue > 0 ? (h.currentValue / totalValue) * 100 : h.weight,
+    })),
+    [enriched, totalValue],
+  );
+
+  // ── KPI calculations ─────────────────────────────────────────────────────
+  const totalCost = useMemo(
+    () => holdings.reduce((s, h) => s + h.quantity * h.costBasis, 0),
+    [holdings],
+  );
+  const unrealisedPnl = totalValue - totalCost;
+  const pnlPct        = totalCost > 0 ? unrealisedPnl / totalCost : 0;
+  const target10x     = totalCost * 10;
+  const progress10x   = target10x > 0 ? totalValue / target10x : 0;
+  const yearsLeft     = TARGET_YEAR - new Date().getFullYear();
+  const requiredCagr  = progress10x > 0 && yearsLeft > 0 && totalValue > 0
+    ? Math.pow(target10x / totalValue, 1 / yearsLeft) - 1
+    : 0;
+
+  // ── Top holdings (up to 5 by value) ─────────────────────────────────────
+  const topHoldings = useMemo(
+    () => [...withWeights].sort((a, b) => b.currentValue - a.currentValue).slice(0, 5),
+    [withWeights],
+  );
+  const maxWeight = Math.max(...topHoldings.map((h) => h.weight), 0.01);
+
+  // ── Allocation donut slices ──────────────────────────────────────────────
+  const allocationSlices: AllocationSlice[] = useMemo(() => {
+    const sorted   = [...withWeights].sort((a, b) => b.currentValue - a.currentValue);
+    const counters: Record<string, number> = {};
+    const named    = sorted.map((h) => {
+      const t   = h.type;
+      const idx = counters[t] ?? 0;
+      counters[t] = idx + 1;
+      const palette = TYPE_PALETTE[t] ?? FALLBACK_COLORS;
+      return {
+        symbol: h.symbol,
+        name:   h.name,
+        pct:    totalValue > 0 ? (h.currentValue / totalValue) * 100 : 0,
+        color:  palette[idx % palette.length],
+        _value: h.currentValue,
+      };
+    });
+
+    // Group holdings < 2% into "Other"
+    const MIN_PCT  = 2;
+    const shown    = named.filter((s) => s.pct >= MIN_PCT);
+    const hidden   = named.filter((s) => s.pct < MIN_PCT);
+    const otherPct = hidden.reduce((s, h) => s + h.pct, 0);
+
+    return [
+      ...shown.map(({ _value: _, ...s }) => s),
+      ...(hidden.length > 0 ? [{ symbol: 'Other', name: `Other (${hidden.length})`, pct: otherPct, color: '#3f3f46' }] : []),
+    ];
+  }, [withWeights, totalValue]);
+
+  // ── Derived counts for Quick Nav ─────────────────────────────────────────
+  const driftCount = holdings.filter((h) => h.thesisDrift).length;
+
+  const quickNav: { to: string; Icon: LucideIcon; label: string; meta: string }[] = [
+    { to: '/holdings',  Icon: Layers,        label: 'Holdings',  meta: `${holdings.length} position${holdings.length !== 1 ? 's' : ''}` },
+    { to: '/thesis',    Icon: FileText,       label: 'Thesis',    meta: driftCount > 0 ? `${driftCount} drift alert${driftCount !== 1 ? 's' : ''}` : 'All current' },
+    { to: '/notes',     Icon: BookOpen,       label: 'Notes',     meta: '14 entries' },
+    { to: '/rebalance', Icon: ArrowLeftRight, label: 'Rebalance', meta: 'Last: Mar 15' },
+    { to: '/risk',      Icon: ShieldAlert,    label: 'Risk',      meta: `${OPEN_RISKS.filter(r => r.status !== 'resolved').length} open items` },
+    { to: '/settings',  Icon: Settings,       label: 'Settings',  meta: 'Configure' },
+  ];
+
+  // ── Description line ─────────────────────────────────────────────────────
+  const hasLivePrices  = Object.keys(quotes).length > 0;
+  const lastUpdatedStr = lastUpdated
+    ? `Live · ${new Date(lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    : 'Cost-basis prices';
+  const description = hasLivePrices ? lastUpdatedStr : 'Cost-basis prices — add an API key in Settings for live data';
 
   return (
     <>
       <PageHeader
-        eyebrow={`${KPI.targetYear} · 10× Target`}
+        eyebrow={`${TARGET_YEAR} · 10× Target`}
         title="Portfolio Overview"
-        description="Mock data — connect API keys in Settings to enable live prices"
+        description={description}
         actions={
-          <Button variant="ghost" size="sm">
-            <RefreshCw size={13} />
-            Refresh
+          <Button variant="ghost" size="sm" onClick={doRefresh} disabled={loading}>
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            {loading ? 'Refreshing…' : 'Refresh'}
           </Button>
         }
       />
@@ -352,26 +376,27 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard
               label="Portfolio Value"
-              value={formatCompact(KPI.totalValue, 'KRW')}
-              sub={`${KPI.positionCount} positions`}
+              value={formatCompact(totalValue, 'USD')}
+              sub={`${holdings.length} position${holdings.length !== 1 ? 's' : ''}`}
               accent
             />
             <KpiCard
               label="Total Cost Basis"
-              value={formatCompact(KPI.costBasis, 'KRW')}
+              value={formatCompact(totalCost, 'USD')}
               sub="total invested"
             />
             <KpiCard
               label="Unrealised P&L"
-              value={`+${formatCompact(KPI.unrealisedPnl, 'KRW')}`}
-              change={formatPct(KPI.pnlPct)}
-              positive
+              value={`${unrealisedPnl >= 0 ? '+' : ''}${formatCompact(Math.abs(unrealisedPnl), 'USD')}`}
+              change={formatPct(pnlPct)}
+              positive={unrealisedPnl > 0}
+              negative={unrealisedPnl < 0}
             />
             <KpiCard
               label="10× Progress"
-              value={`${(KPI.progress10x * 100).toFixed(1)}%`}
-              progress={KPI.progress10x}
-              sub={`${formatCompact(KPI.totalValue, 'KRW')} of ${formatCompact(KPI.target10x, 'KRW')} · ~${(KPI.requiredCagr * 100).toFixed(0)}% CAGR req.`}
+              value={`${(progress10x * 100).toFixed(1)}%`}
+              progress={progress10x}
+              sub={`${formatCompact(totalValue, 'USD')} of ${formatCompact(target10x, 'USD')} · ~${(requiredCagr * 100).toFixed(0)}% CAGR req.`}
             />
           </div>
 
@@ -385,11 +410,9 @@ export default function Dashboard() {
               <div className="px-5 pt-5 pb-0">
                 <SectionHead
                   title="Top Holdings"
-                  sub={`${KPI.positionCount} positions · by current value`}
+                  sub={`${holdings.length} positions · by current value`}
                   to="/holdings"
                 />
-
-                {/* Column labels */}
                 <div className="grid grid-cols-[minmax(0,1fr)_6rem_5rem_3.5rem] gap-x-3 pb-2 border-b border-surface-border">
                   <span className="text-2xs font-semibold uppercase tracking-widest text-text-muted">Asset</span>
                   <span className="text-2xs font-semibold uppercase tracking-widest text-text-muted text-right">Weight</span>
@@ -398,12 +421,14 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Holding rows */}
               <div className="px-4 pb-5">
-                {TOP_HOLDINGS.map((h) => (
-                  <div
-                    key={h.symbol}
-                    className="grid grid-cols-[minmax(0,1fr)_6rem_5rem_3.5rem] gap-x-3 items-center py-2.5 -mx-1 px-1 rounded-md hover:bg-surface-overlay transition-colors cursor-pointer border-b border-surface-border/40 last:border-0"
+                {topHoldings.length === 0 ? (
+                  <p className="text-xs text-text-muted py-6 text-center">No holdings yet.</p>
+                ) : topHoldings.map((h) => (
+                  <Link
+                    key={h.id}
+                    to={`/holdings/${h.symbol}`}
+                    className="grid grid-cols-[minmax(0,1fr)_6rem_5rem_3.5rem] gap-x-3 items-center py-2.5 -mx-1 px-1 rounded-md hover:bg-surface-overlay transition-colors border-b border-surface-border/40 last:border-0"
                   >
                     {/* Asset */}
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -435,16 +460,16 @@ export default function Dashboard() {
                         />
                       </div>
                       <span className="text-xs num text-text-muted w-8 text-right">
-                        {(h.weight * 100).toFixed(0)}%
+                        {h.weight.toFixed(0)}%
                       </span>
                     </div>
 
                     {/* Value */}
                     <div className="text-sm num text-text-secondary text-right">
-                      {formatCompact(h.value, 'KRW')}
+                      {formatCompact(h.currentValue, 'USD')}
                     </div>
 
-                    {/* P&L */}
+                    {/* P&L % */}
                     <div className={[
                       'flex items-center justify-end gap-0.5 text-xs num font-medium',
                       h.pnlPct >= 0 ? 'text-gain-text' : 'text-loss-text',
@@ -452,9 +477,9 @@ export default function Dashboard() {
                       {h.pnlPct >= 0
                         ? <TrendingUp size={11} strokeWidth={2.5} />
                         : <TrendingDown size={11} strokeWidth={2.5} />}
-                      {Math.abs(h.pnlPct * 100).toFixed(1)}%
+                      {Math.abs(h.pnlPct).toFixed(1)}%
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </Card>
@@ -468,25 +493,24 @@ export default function Dashboard() {
                 linkLabel="Rebalance"
               />
 
-              {/* Donut chart with centered overlay label */}
               <div className="relative">
                 <ResponsiveContainer width="100%" height={168}>
                   <PieChart>
                     <Pie
-                      data={ALLOCATION}
+                      data={allocationSlices}
                       cx="50%"
                       cy="50%"
                       innerRadius={52}
                       outerRadius={76}
                       dataKey="pct"
                       strokeWidth={2}
-                      stroke="#18181b"  /* match page bg — creates gap between slices */
+                      stroke="#18181b"
                       startAngle={90}
                       endAngle={-270}
                       animationBegin={100}
                       animationDuration={700}
                     >
-                      {ALLOCATION.map((entry, i) => (
+                      {allocationSlices.map((entry, i) => (
                         <Cell key={i} fill={entry.color} />
                       ))}
                     </Pie>
@@ -497,7 +521,9 @@ export default function Dashboard() {
                 {/* Center text */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="text-center">
-                    <div className="text-base font-semibold num text-text-primary leading-none">₩214.5M</div>
+                    <div className="text-base font-semibold num text-text-primary leading-none">
+                      {formatCompact(totalValue, 'USD')}
+                    </div>
                     <div className="text-2xs text-text-muted mt-1 uppercase tracking-widest">Total</div>
                   </div>
                 </div>
@@ -505,15 +531,12 @@ export default function Dashboard() {
 
               {/* Legend */}
               <div className="mt-4 space-y-2">
-                {ALLOCATION.map((slice) => (
+                {allocationSlices.map((slice) => (
                   <div key={slice.symbol} className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <div
-                        className="h-2 w-2 rounded-full flex-shrink-0"
-                        style={{ background: slice.color }}
-                      />
+                      <div className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: slice.color }} />
                       <span className="text-xs font-medium text-text-secondary">{slice.symbol}</span>
-                      <span className="text-xs text-text-muted hidden sm:inline">{slice.name}</span>
+                      <span className="text-xs text-text-muted hidden sm:inline truncate max-w-[90px]">{slice.name}</span>
                     </div>
                     <span className="text-xs num text-text-muted">{slice.pct.toFixed(1)}%</span>
                   </div>
@@ -527,7 +550,6 @@ export default function Dashboard() {
           ────────────────────────────────────────────────────────────────── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-            {/* Research notes */}
             <Card padding="none">
               <div className="px-5 pt-5 pb-4">
                 <SectionHead
@@ -552,7 +574,6 @@ export default function Dashboard() {
               </div>
             </Card>
 
-            {/* Risks & Catalysts */}
             <Card padding="none">
               <div className="px-5 pt-5 pb-4">
                 <SectionHead
@@ -570,11 +591,11 @@ export default function Dashboard() {
               <div className="px-5 pb-4 pt-1 flex items-center gap-4 text-2xs text-text-muted">
                 <span className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-warn inline-block" />
-                  2 open risks
+                  {OPEN_RISKS.filter(r => r.kind === 'risk' && r.status !== 'resolved').length} open risks
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-accent inline-block" />
-                  2 catalysts tracked
+                  {OPEN_RISKS.filter(r => r.kind === 'catalyst').length} catalysts tracked
                 </span>
               </div>
             </Card>
@@ -585,7 +606,6 @@ export default function Dashboard() {
           ────────────────────────────────────────────────────────────────── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-            {/* Last rebalance decision */}
             <Card>
               <SectionHead
                 title="Last Rebalance Decision"
@@ -593,8 +613,6 @@ export default function Dashboard() {
                 to="/rebalance"
                 linkLabel="Full log"
               />
-
-              {/* Action line */}
               <div className="mb-3 flex items-start gap-2">
                 <div className="mt-0.5 flex-shrink-0 h-5 w-5 rounded bg-accent-subtle flex items-center justify-center">
                   <Target size={11} className="text-accent" strokeWidth={2.5} />
@@ -603,8 +621,6 @@ export default function Dashboard() {
                   {LAST_REBALANCE.action}
                 </p>
               </div>
-
-              {/* Rationale */}
               <div className="rounded-md bg-surface-overlay border border-surface-border px-3.5 py-3">
                 <p className="text-xs text-text-muted leading-relaxed">
                   {LAST_REBALANCE.rationale}
@@ -612,11 +628,10 @@ export default function Dashboard() {
               </div>
             </Card>
 
-            {/* Quick access grid */}
             <div>
               <h3 className="text-sm font-semibold text-text-primary mb-3">Quick Access</h3>
               <div className="grid grid-cols-3 gap-3">
-                {QUICK_NAV.map(({ to, Icon, label, meta }) => (
+                {quickNav.map(({ to, Icon, label, meta }) => (
                   <QuickNavTile key={to} to={to} Icon={Icon} label={label} meta={meta} />
                 ))}
               </div>
