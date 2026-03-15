@@ -141,16 +141,6 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
     }
   }, [anthropicKey, holdings, quotes]);
 
-  // Auto-run when first opened (if key is set)
-  const hasRun = useRef(false);
-  useEffect(() => {
-    if (open && !hasRun.current && anthropicKey) {
-      hasRun.current = true;
-      run();
-    }
-    if (!open) hasRun.current = false;
-  }, [open, anthropicKey, run]);
-
   function handleCopy() {
     navigator.clipboard.writeText(text);
     setCopied(true);
