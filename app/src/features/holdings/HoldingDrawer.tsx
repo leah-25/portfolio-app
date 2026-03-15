@@ -1,5 +1,6 @@
 import { X, ExternalLink, Plus, FileText, AlertTriangle } from 'lucide-react';
 import { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import Badge from '../../components/ui/Badge';
 import Tag from '../../components/ui/Tag';
 import Button from '../../components/ui/Button';
@@ -198,10 +199,12 @@ function DrawerContent({ holding, onClose }: { holding: HoldingRecord; onClose: 
 
       {/* ── Footer actions ───────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-5 py-4 border-t border-surface-border flex-shrink-0">
-        <Button variant="primary" size="sm" className="flex-1">
-          <FileText size={14} />
-          View Thesis
-        </Button>
+        <Link to={`/holdings/${holding.symbol}`} className="flex-1">
+          <Button variant="primary" size="sm" className="w-full">
+            <FileText size={14} />
+            View Detail
+          </Button>
+        </Link>
         <Button variant="secondary" size="sm">
           <Plus size={14} />
           Add Note

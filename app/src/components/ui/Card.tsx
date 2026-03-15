@@ -58,7 +58,7 @@ export default function Card({
 // ── CardHeader ────────────────────────────────────────────────────────────────
 
 interface CardHeaderProps {
-  title: string;
+  title: React.ReactNode;
   subtitle?: string;
   /** Right-side slot — buttons, badges, etc. */
   actions?: React.ReactNode;
