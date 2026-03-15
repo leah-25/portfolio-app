@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import Anthropic from '@anthropic-ai/sdk';
-import { buildPrompt } from './src/lib/analysis/promptBuilder';
+import { buildPrompt, type PromptHolding, type PromptQuote } from './src/lib/analysis/promptBuilder';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -23,14 +23,22 @@ export default defineConfig({
             const apiKey = process.env.ANTHROPIC_API_KEY;
             if (!apiKey) {
               res.statusCode = 503;
-              res.end(JSON.stringify({ error: 'ANTHROPIC_API_KEY not set in environment' }));
+              res.end('Server is missing ANTHROPIC_API_KEY. Add it to .env.local and restart the dev server.');
               return;
             }
 
-            // Read request body
+            // Read and parse request body
             let raw = '';
             for await (const chunk of req) raw += chunk;
-            const { holdings, quotes } = JSON.parse(raw);
+
+            let holdings: PromptHolding[], quotes: Record<string, PromptQuote>;
+            try {
+              ({ holdings, quotes } = JSON.parse(raw) as { holdings: PromptHolding[]; quotes: Record<string, PromptQuote> });
+            } catch {
+              res.statusCode = 400;
+              res.end('Invalid request body — expected JSON with holdings and quotes.');
+              return;
+            }
 
             res.setHeader('Content-Type', 'application/x-ndjson');
             res.setHeader('Cache-Control', 'no-cache');

@@ -20,22 +20,25 @@ function formatAge(ts: number): string {
   return `${Math.round(hrs / 24)}d ago`;
 }
 
+// Module-level constant — Vite statically replaces this at build time.
+const USE_SERVER_KEY = import.meta.env.VITE_USE_SERVER_KEY === 'true';
+
 // ── Props ──────────────────────────────────────────────────────────────────────
 
 interface PortfolioAnalysisProps {
   open: boolean;
   onClose: () => void;
   holdings: HoldingRecord[];
+  title?: string;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export default function PortfolioAnalysis({ open, onClose, holdings }: PortfolioAnalysisProps) {
+export default function PortfolioAnalysis({ open, onClose, holdings, title = 'AI Portfolio Analysis' }: PortfolioAnalysisProps) {
   const { anthropicKey, analysisCache, setAnalysisCache } = useAIStore();
   const { quotes } = useMarketStore();
-  const useServerKey = import.meta.env.VITE_USE_SERVER_KEY === 'true';
   // API access: either server-side key (proxy mode) or user-entered key
-  const hasApiAccess = useServerKey || !!anthropicKey;
+  const hasApiAccess = USE_SERVER_KEY || !!anthropicKey;
   const { saveNote } = useResearchNotesStore();
 
   const [status, setStatus] = useState<'idle' | 'loading' | 'streaming' | 'done' | 'error'>('idle');
@@ -98,7 +101,8 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
   }, [open]);
 
   const run = useCallback(async () => {
-    if (!anthropicKey) return;
+    if (!hasApiAccess) return;                                              // ← fixed: was !anthropicKey
+    if (holdings.length === 0) return;                                      // nothing to analyze
     if (statusRef.current === 'loading' || statusRef.current === 'streaming') return;
 
     abortRef.current?.abort();
@@ -131,7 +135,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
       setError(err instanceof Error ? err.message : 'Analysis failed. Please try again.');
       setStatus('error');
     }
-  }, [anthropicKey, holdings, quotes, setAnalysisCache]);
+  }, [hasApiAccess, anthropicKey, holdings, quotes, setAnalysisCache]);
 
   function handleCopy() {
     navigator.clipboard.writeText(text);
@@ -183,7 +187,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
         <div className="flex h-14 items-center justify-between border-b border-surface-border px-5 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Sparkles size={15} className="text-accent" />
-            <h2 className="text-sm font-semibold text-text-primary">AI Portfolio Analysis</h2>
+            <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
             {isRunning && (
               <span className="ml-1 inline-flex items-center gap-1.5 text-xs text-text-muted">
                 <RefreshCw size={11} className="animate-spin" />
@@ -287,13 +291,24 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
           {hasApiAccess && status === 'idle' && (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
               <Sparkles size={28} className="text-accent opacity-60" />
-              <div>
-                <p className="text-sm font-medium text-text-primary mb-1">Ready to analyze</p>
-                <p className="text-xs text-text-muted">Click below to generate portfolio insights.</p>
-              </div>
-              <Button variant="primary" size="sm" onClick={run}>
-                Run Analysis
-              </Button>
+              {holdings.length === 0 ? (
+                <div>
+                  <p className="text-sm font-medium text-text-primary mb-1">No holdings to analyze</p>
+                  <p className="text-xs text-text-muted">Add positions to your portfolio first.</p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <p className="text-sm font-medium text-text-primary mb-1">Ready to analyze</p>
+                    <p className="text-xs text-text-muted">
+                      Click below to generate insights for {holdings.length} position{holdings.length !== 1 ? 's' : ''}.
+                    </p>
+                  </div>
+                  <Button variant="primary" size="sm" onClick={run}>
+                    Run Analysis
+                  </Button>
+                </>
+              )}
             </div>
           )}
 

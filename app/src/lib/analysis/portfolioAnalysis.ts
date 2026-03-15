@@ -40,7 +40,15 @@ async function analyzeViaProxy(opts: AnalysisOptions): Promise<void> {
   });
 
   if (!res.ok || !res.body) {
-    const msg = await res.text().catch(() => 'Proxy request failed');
+    let msg = 'Proxy request failed';
+    try {
+      const body = await res.text();
+      // Server may return plain text or JSON — handle both
+      const parsed = JSON.parse(body) as Record<string, unknown>;
+      msg = String(parsed.error ?? parsed.message ?? body);
+    } catch {
+      // body was plain text; already captured above if res.text() succeeded
+    }
     throw new Error(msg);
   }
 

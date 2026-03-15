@@ -1,9 +1,9 @@
 import { useParams, Link } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ChevronLeft, TrendingUp, TrendingDown,
   CheckCircle2, XCircle, Clock, BarChart2, BookOpen,
-  ArrowLeftRight, ShieldAlert, Zap, RefreshCw,
+  ArrowLeftRight, ShieldAlert, Zap, RefreshCw, Sparkles,
 } from 'lucide-react';
 import PageContainer, { PageGrid } from '../../components/layout/PageContainer';
 import Card, { CardHeader, CardDivider } from '../../components/ui/Card';
@@ -12,9 +12,13 @@ import Tag from '../../components/ui/Tag';
 import ConvictionPips from '../../components/ui/ConvictionPips';
 import { Table, Thead, Tbody, Tr, Th, Td } from '../../components/ui/Table';
 import EmptyState from '../../components/ui/EmptyState';
+import Button from '../../components/ui/Button';
 import { useMarketStore } from '../../store/marketStore';
 import { useHoldingsStore } from '../../store/holdingsStore';
+import { useAIStore } from '../../store/aiStore';
 import { formatCurrency, formatCompact, formatPct, formatDate } from '../../lib/formatters';
+import PortfolioAnalysis from '../analysis/PortfolioAnalysis';
+import type { HoldingRecord } from './types';
 
 // ── Mock data catalogue ───────────────────────────────────────────────────────
 
@@ -211,13 +215,19 @@ const CATALYST_META = {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+const USE_SERVER_KEY = import.meta.env.VITE_USE_SERVER_KEY === 'true';
+
 export default function StockDetail() {
   const { symbol = '' } = useParams<{ symbol: string }>();
   const upper = symbol.toUpperCase();
 
+  const [showAnalysis, setShowAnalysis] = useState(false);
+
   // Position data from the persistent store
   const { holdings } = useHoldingsStore();
   const holding = holdings.find((h) => h.symbol === upper);
+  const { anthropicKey } = useAIStore();
+  const canAnalyze = (USE_SERVER_KEY || !!anthropicKey) && !!holding;
 
   // Rich catalogue content (description, bull/bear, KPIs, etc.)
   const catalogue = MOCK_CATALOGUE[upper];
@@ -257,6 +267,15 @@ export default function StockDetail() {
   const pnlPct       = totalCost > 0 ? (pnl / totalCost) * 100 : 0;
   const gain         = pnl >= 0;
 
+  // Enriched holding for single-stock AI analysis (live price applied, weight = 100%)
+  const analysisHolding: HoldingRecord[] = holding ? [{
+    ...holding,
+    currentValue,
+    pnl,
+    pnlPct,
+    weight: 100,
+  }] : [];
+
   return (
     <>
       {/* ── Page header ──────────────────────────────────────────────── */}
@@ -277,6 +296,12 @@ export default function StockDetail() {
               <h1 className="text-2xl font-bold text-text-primary tracking-tight">{data.symbol}</h1>
               <Badge variant={data.type === 'crypto' ? 'warn' : 'accent'}>{data.type.toUpperCase()}</Badge>
               <Tag size="sm">{data.sector}</Tag>
+              {canAnalyze && (
+                <Button variant="secondary" size="sm" onClick={() => setShowAnalysis(true)}>
+                  <Sparkles size={13} />
+                  Analyze
+                </Button>
+              )}
             </div>
             <p className="text-sm text-text-muted">{data.name}</p>
           </div>
@@ -321,6 +346,14 @@ export default function StockDetail() {
           </div>
         </div>
       </div>
+
+      {/* ── AI analysis panel ───────────────────────────────────────── */}
+      <PortfolioAnalysis
+        open={showAnalysis}
+        onClose={() => setShowAnalysis(false)}
+        holdings={analysisHolding}
+        title={`AI Analysis · ${data.symbol}`}
+      />
 
       {/* ── Body ─────────────────────────────────────────────────────── */}
       <PageContainer>
