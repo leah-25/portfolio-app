@@ -10,6 +10,21 @@ export interface AnalysisOptions {
   signal?: AbortSignal;
 }
 
+// ── Cache key ────────────────────────────────────────────────────────────────
+// Derived only from portfolio structure (not live prices) so the cache
+// survives minor price ticks but invalidates on any real portfolio change.
+export function buildCacheKey(holdings: HoldingRecord[]): string {
+  return holdings
+    .slice()
+    .sort((a, b) => a.symbol.localeCompare(b.symbol))
+    .map(h =>
+      [h.symbol, h.quantity, h.costBasis, h.thesisDrift ? 1 : 0,
+       h.riskLevel, h.conviction ?? 0, h.lots.length,
+       (h.thesisBody ?? '').slice(0, 80)].join(':')
+    )
+    .join('|');
+}
+
 function buildPrompt(holdings: HoldingRecord[], quotes: Record<string, Quote>): string {
   const totalValue = holdings.reduce((sum, h) => sum + h.currentValue, 0);
   const totalCost  = holdings.reduce((sum, h) => sum + h.costBasis * h.quantity, 0);
@@ -65,19 +80,23 @@ function buildPrompt(holdings: HoldingRecord[], quotes: Record<string, Quote>): 
     const conviction = h.conviction ?? 'unrated';
     const drift = h.thesisDrift ? ' ⚠ THESIS DRIFT' : '';
 
-    const lotLines = (h.lots ?? []).length > 0
-      ? '\n    Lot history:\n' + h.lots!.map(l =>
-          `      – ${l.date}: ${l.quantity} shares @ $${l.price.toLocaleString()}`
-        ).join('\n')
+    // Keep only the 3 most recent lots to limit prompt size
+    const recentLots = (h.lots ?? []).slice(-3);
+    const lotLines = recentLots.length > 0
+      ? '\n    Lots (recent 3): ' +
+        recentLots.map(l => `${l.date} ${l.quantity}×$${l.price.toLocaleString()}`).join(', ')
       : '';
+
+    // Truncate thesis to 200 chars to keep prompt compact
+    const thesis = (h.thesisBody ?? '').slice(0, 200) || 'None.';
 
     return [
       `  • ${h.symbol} (${h.name}) — ${h.type.toUpperCase()}, ${h.sector}`,
       `    Weight: ${h.weight.toFixed(1)}% | Target: ${h.targetWeight != null ? h.targetWeight + '%' : 'none'}`,
-      `    Qty: ${h.quantity} | Cost basis: $${h.costBasis.toLocaleString()} | Live: ${livePrice}`,
+      `    Qty: ${h.quantity} | Cost: $${h.costBasis.toLocaleString()} | Live: ${livePrice}`,
       `    P&L: ${h.pnl >= 0 ? '+' : ''}$${h.pnl.toLocaleString()} (${h.pnlPct >= 0 ? '+' : ''}${h.pnlPct.toFixed(1)}%)`,
       `    Conviction: ${conviction}/5 | Risk: ${h.riskLevel}${drift}`,
-      `    Thesis: ${h.thesisBody || 'No thesis recorded.'}`,
+      `    Thesis: ${thesis}`,
       lotLines,
     ].filter(Boolean).join('\n');
   }).join('\n\n');

@@ -1,14 +1,13 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Sparkles, X, RefreshCw, AlertCircle, Settings2, Copy, Check } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Sparkles, X, RefreshCw, AlertCircle, Settings2, Copy, Check, Database } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Button from '../../components/ui/Button';
 import { useAIStore } from '../../store/aiStore';
 import { useMarketStore } from '../../store/marketStore';
-import { analyzePortfolio } from '../../lib/analysis/portfolioAnalysis';
+import { analyzePortfolio, buildCacheKey } from '../../lib/analysis/portfolioAnalysis';
 import type { HoldingRecord } from '../holdings/types';
 
 // ── Simple markdown renderer ───────────────────────────────────────────────────
-// Renders the subset of markdown Claude produces: headings, bold, bullets, paragraphs.
 
 function MarkdownBlock({ text }: { text: string }) {
   const lines = text.split('\n');
@@ -16,7 +15,6 @@ function MarkdownBlock({ text }: { text: string }) {
   let i = 0;
 
   function renderInline(raw: string) {
-    // Bold: **text**
     const parts = raw.split(/(\*\*[^*]+\*\*)/g);
     return parts.map((p, idx) =>
       p.startsWith('**') && p.endsWith('**')
@@ -27,7 +25,6 @@ function MarkdownBlock({ text }: { text: string }) {
 
   while (i < lines.length) {
     const line = lines[i];
-
     if (line.startsWith('## ')) {
       elements.push(
         <h2 key={i} className="mt-5 mb-2 text-sm font-semibold text-text-primary tracking-wide uppercase">
@@ -41,7 +38,6 @@ function MarkdownBlock({ text }: { text: string }) {
         </h3>
       );
     } else if (/^[1-9]\d*\./.test(line) || line.startsWith('- ') || line.startsWith('• ')) {
-      // List item
       const content = line.replace(/^[1-9]\d*\.\s*/, '').replace(/^[-•]\s*/, '');
       elements.push(
         <li key={i} className="ml-4 text-sm text-text-secondary leading-relaxed list-disc">
@@ -49,7 +45,7 @@ function MarkdownBlock({ text }: { text: string }) {
         </li>
       );
     } else if (line.trim() === '') {
-      // blank line — skip (spacing handled by margins)
+      // skip blank lines
     } else {
       elements.push(
         <p key={i} className="text-sm text-text-secondary leading-relaxed mb-2">
@@ -63,6 +59,17 @@ function MarkdownBlock({ text }: { text: string }) {
   return <div className="space-y-0.5">{elements}</div>;
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function formatAge(ts: number): string {
+  const mins = Math.round((Date.now() - ts) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
 // ── Props ──────────────────────────────────────────────────────────────────────
 
 interface PortfolioAnalysisProps {
@@ -74,7 +81,7 @@ interface PortfolioAnalysisProps {
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function PortfolioAnalysis({ open, onClose, holdings }: PortfolioAnalysisProps) {
-  const { anthropicKey } = useAIStore();
+  const { anthropicKey, analysisCache, setAnalysisCache } = useAIStore();
   const { quotes } = useMarketStore();
 
   const [status, setStatus] = useState<'idle' | 'loading' | 'streaming' | 'done' | 'error'>('idle');
@@ -82,8 +89,33 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const abortRef = useRef<AbortController | null>(null);
-  const bodyRef  = useRef<HTMLDivElement>(null);
+  const abortRef      = useRef<AbortController | null>(null);
+  const bodyRef       = useRef<HTMLDivElement>(null);
+  const accumulatedRef = useRef('');  // captures full text for caching
+  const statusRef     = useRef(status);
+  statusRef.current = status;
+
+  // Stable refs so the open-effect always reads latest values without re-running
+  const cacheRef      = useRef(analysisCache);
+  cacheRef.current    = analysisCache;
+  const currentKey    = useMemo(() => buildCacheKey(holdings), [holdings]);
+  const currentKeyRef = useRef(currentKey);
+  currentKeyRef.current = currentKey;
+
+  // On open: load from cache if portfolio hasn't changed, else reset to idle
+  useEffect(() => {
+    if (!open) return;
+    const cache = cacheRef.current;
+    const key   = currentKeyRef.current;
+    if (cache && cache.key === key) {
+      setText(cache.text);
+      setStatus('done');
+    } else {
+      setText('');
+      setError('');
+      setStatus('idle');
+    }
+  }, [open]);
 
   // Auto-scroll to bottom while streaming
   useEffect(() => {
@@ -113,10 +145,14 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
 
   const run = useCallback(async () => {
     if (!anthropicKey) return;
+    // Prevent duplicate requests while one is already in flight
+    if (statusRef.current === 'loading' || statusRef.current === 'streaming') return;
+
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
+    accumulatedRef.current = '';
     setText('');
     setError('');
     setStatus('loading');
@@ -130,16 +166,19 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
         signal: ctrl.signal,
         onChunk: (chunk) => {
           if (firstChunk) { setStatus('streaming'); firstChunk = false; }
+          accumulatedRef.current += chunk;
           setText(prev => prev + chunk);
         },
       });
+      // Persist result so subsequent opens skip the API call
+      setAnalysisCache(currentKeyRef.current, accumulatedRef.current);
       setStatus('done');
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
       setError(err instanceof Error ? err.message : 'Analysis failed. Please try again.');
       setStatus('error');
     }
-  }, [anthropicKey, holdings, quotes]);
+  }, [anthropicKey, holdings, quotes, setAnalysisCache]);
 
   function handleCopy() {
     navigator.clipboard.writeText(text);
@@ -149,7 +188,8 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
 
   if (!open) return null;
 
-  const isRunning = status === 'loading' || status === 'streaming';
+  const isRunning  = status === 'loading' || status === 'streaming';
+  const isCached   = !isRunning && status === 'done' && analysisCache?.key === currentKey;
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -168,6 +208,12 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
               <span className="ml-1 inline-flex items-center gap-1.5 text-xs text-text-muted">
                 <RefreshCw size={11} className="animate-spin" />
                 Analyzing…
+              </span>
+            )}
+            {isCached && (
+              <span className="ml-1 inline-flex items-center gap-1 text-xs text-text-muted">
+                <Database size={10} />
+                Cached
               </span>
             )}
           </div>
@@ -245,7 +291,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
             </div>
           )}
 
-          {/* Idle state (key set, not yet run) */}
+          {/* Idle state */}
           {anthropicKey && status === 'idle' && (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
               <Sparkles size={28} className="text-accent opacity-60" />
@@ -283,8 +329,10 @@ export default function PortfolioAnalysis({ open, onClose, holdings }: Portfolio
         {anthropicKey && (status === 'done' || status === 'streaming') && (
           <div className="border-t border-surface-border px-5 py-3 flex-shrink-0">
             <p className="text-xs text-text-muted">
-              Powered by <strong className="text-text-secondary">Claude Opus 4.6</strong> · {holdings.length} holdings analyzed
+              Powered by <strong className="text-text-secondary">Claude Opus 4.6</strong>
+              {' · '}{holdings.length} holdings analyzed
               {Object.keys(quotes).length > 0 && ` · ${Object.keys(quotes).length} live prices`}
+              {isCached && analysisCache && ` · cached ${formatAge(analysisCache.timestamp)}`}
             </p>
           </div>
         )}
