@@ -11,7 +11,8 @@ import RiskForm from './RiskForm';
 import { useRiskStore, type RiskEntry } from '../../store/riskStore';
 import { useHoldingsStore } from '../../store/holdingsStore';
 import { useAIStore } from '../../store/aiStore';
-import { generateRiskEntries } from '../../lib/ai/generate';
+import { usePortfolioGoalStore } from '../../store/portfolioStore';
+import { generateRiskEntries, buildGoalContext } from '../../lib/ai/generate';
 
 const USE_SERVER_KEY = import.meta.env.VITE_USE_SERVER_KEY === 'true';
 
@@ -65,6 +66,7 @@ export default function Risk() {
   const { entries, addEntry, deleteEntry } = useRiskStore();
   const { holdings } = useHoldingsStore();
   const { anthropicKey } = useAIStore();
+  const { goalMultiple, goalYear } = usePortfolioGoalStore();
   const hasAI = USE_SERVER_KEY || !!anthropicKey;
 
   const [formOpen, setFormOpen]     = useState(false);
@@ -87,6 +89,7 @@ export default function Risk() {
           symbol: h.symbol, name: h.name, sector: h.sector, weight: h.weight,
         })),
         anthropicKey || undefined,
+        buildGoalContext(goalMultiple, goalYear),
       );
       results.forEach((e) => addEntry(e));
     } catch (err) {

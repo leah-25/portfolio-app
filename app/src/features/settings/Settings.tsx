@@ -13,19 +13,25 @@ import { useNotesStore } from '../../store/notesStore';
 import { useRiskStore } from '../../store/riskStore';
 import { useRebalanceStore } from '../../store/rebalanceStore';
 import { useResearchNotesStore } from '../../store/researchNotesStore';
+import { usePortfolioGoalStore } from '../../store/portfolioStore';
 import type { ProviderName } from '../../lib/marketData';
 
 export default function Settings() {
   const { apiKey, provider, refreshInterval, setApiKey, setProvider, setRefreshInterval } = useMarketStore();
   const { anthropicKey, setAnthropicKey } = useAIStore();
+  const { goalMultiple, goalYear, setGoalMultiple, setGoalYear } = usePortfolioGoalStore();
 
-  const [keyDraft,      setKeyDraft]      = useState(apiKey);
-  const [providerDraft, setProviderDraft] = useState<ProviderName>(provider);
-  const [intervalDraft, setIntervalDraft] = useState(String(refreshInterval));
-  const [saved,         setSaved]         = useState(false);
+  const [keyDraft,        setKeyDraft]        = useState(apiKey);
+  const [providerDraft,   setProviderDraft]   = useState<ProviderName>(provider);
+  const [intervalDraft,   setIntervalDraft]   = useState(String(refreshInterval));
+  const [saved,           setSaved]           = useState(false);
 
   const [aiKeyDraft, setAiKeyDraft] = useState(anthropicKey);
   const [aiSaved,    setAiSaved]    = useState(false);
+
+  const [multipleDraft, setMultipleDraft] = useState(String(goalMultiple));
+  const [yearDraft,     setYearDraft]     = useState(String(goalYear));
+  const [goalSaved,     setGoalSaved]     = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -34,6 +40,18 @@ export default function Settings() {
   const riskStore      = useRiskStore();
   const rebalanceStore = useRebalanceStore();
   const aiNotesStore   = useResearchNotesStore();
+
+  function handleGoalSave() {
+    const m = parseFloat(multipleDraft);
+    const y = parseInt(yearDraft, 10);
+    const validM = !isNaN(m) && m > 0;
+    const validY = !isNaN(y) && y > 2020;
+    if (!validM || !validY) return;   // ignore save on invalid input
+    setGoalMultiple(m);
+    setGoalYear(y);
+    setGoalSaved(true);
+    setTimeout(() => setGoalSaved(false), 2500);
+  }
 
   function handleSave() {
     setApiKey(keyDraft);
@@ -114,8 +132,9 @@ export default function Settings() {
     useResearchNotesStore.setState({ notes: [] });
   }
 
-  const dirty   = keyDraft !== apiKey || providerDraft !== provider || intervalDraft !== String(refreshInterval);
-  const aiDirty = aiKeyDraft !== anthropicKey;
+  const dirty     = keyDraft !== apiKey || providerDraft !== provider || intervalDraft !== String(refreshInterval);
+  const aiDirty   = aiKeyDraft !== anthropicKey;
+  const goalDirty = multipleDraft !== String(goalMultiple) || yearDraft !== String(goalYear);
 
   return (
     <>
@@ -137,8 +156,40 @@ export default function Settings() {
                 ]}
               />
               <div className="grid grid-cols-2 gap-4">
-                <Input label="Target year"     type="number" defaultValue={2030} />
-                <Input label="Target multiple" type="number" defaultValue={10} />
+                <Input
+                  label="Target year"
+                  type="number"
+                  min={2025}
+                  max={2050}
+                  value={yearDraft}
+                  onChange={(e) => { setYearDraft(e.target.value); setGoalSaved(false); }}
+                  hint="Year by which you aim to hit your goal."
+                />
+                <Input
+                  label="Target multiple"
+                  type="number"
+                  min={1}
+                  step={0.5}
+                  value={multipleDraft}
+                  onChange={(e) => { setMultipleDraft(e.target.value); setGoalSaved(false); }}
+                  hint="e.g. 10 means 10× your starting value."
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleGoalSave}
+                  disabled={!goalDirty && !goalSaved}
+                >
+                  Save goal
+                </Button>
+                {goalSaved && (
+                  <span className="flex items-center gap-1.5 text-xs text-gain-text">
+                    <CheckCircle2 size={13} />
+                    Saved
+                  </span>
+                )}
               </div>
             </div>
           </Card>

@@ -11,6 +11,61 @@ export default defineConfig({
     {
       name: 'anthropic-proxy',
       configureServer(server) {
+        // ── /api/generate (non-streaming, used by stock detail) ───────────────
+        server.middlewares.use(
+          '/api/generate',
+          async (req: IncomingMessage, res: ServerResponse) => {
+            if (req.method !== 'POST') {
+              res.statusCode = 405;
+              res.end('Method Not Allowed');
+              return;
+            }
+
+            const apiKey = process.env.ANTHROPIC_API_KEY;
+            if (!apiKey) {
+              res.statusCode = 503;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Server is missing ANTHROPIC_API_KEY. Add it to .env.local and restart the dev server.' }));
+              return;
+            }
+
+            let raw = '';
+            for await (const chunk of req) raw += chunk;
+
+            let prompt: string, systemPrompt: string;
+            try {
+              ({ prompt, systemPrompt } = JSON.parse(raw) as { prompt: string; systemPrompt: string });
+            } catch {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Invalid request body.' }));
+              return;
+            }
+
+            try {
+              const client = new Anthropic({ apiKey });
+              const msg = await client.messages.create({
+                model: 'claude-opus-4-6',
+                max_tokens: 2048,
+                system: systemPrompt,
+                messages: [{ role: 'user', content: prompt }],
+              });
+
+              const content = msg.content[0];
+              if (content.type !== 'text') throw new Error('Unexpected response type');
+
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ text: content.text }));
+            } catch (err) {
+              const message = err instanceof Error ? err.message : 'Generation failed';
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: message }));
+            }
+          },
+        );
+
+        // ── /api/analyze (streaming, used by portfolio analysis) ─────────────
         server.middlewares.use(
           '/api/analyze',
           async (req: IncomingMessage, res: ServerResponse) => {
