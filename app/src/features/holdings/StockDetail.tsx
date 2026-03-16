@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import {
   ChevronLeft, TrendingUp, TrendingDown,
   CheckCircle2, XCircle, Clock, BarChart2, BookOpen,
-  ArrowLeftRight, ShieldAlert, Zap, RefreshCw, Sparkles,
+  ArrowLeftRight, ShieldAlert, Zap, RefreshCw, Sparkles, Loader2,
 } from 'lucide-react';
 import PageContainer, { PageGrid } from '../../components/layout/PageContainer';
 import Card, { CardHeader, CardDivider } from '../../components/ui/Card';
@@ -17,8 +17,8 @@ import { useMarketStore } from '../../store/marketStore';
 import { useHoldingsStore } from '../../store/holdingsStore';
 import { useAIStore } from '../../store/aiStore';
 import { formatCurrency, formatCompact, formatPct, formatDate } from '../../lib/formatters';
-import PortfolioAnalysis from '../analysis/PortfolioAnalysis';
-import type { HoldingRecord } from './types';
+import { generateStockDetail } from '../../lib/analysis/stockDetail';
+import { fetchSymbolNews } from '../../lib/marketData/polygonNews';
 
 // ── Mock data catalogue ───────────────────────────────────────────────────────
 
@@ -221,20 +221,36 @@ export default function StockDetail() {
   const { symbol = '' } = useParams<{ symbol: string }>();
   const upper = symbol.toUpperCase();
 
-  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
 
   // Position data from the persistent store
   const { holdings } = useHoldingsStore();
   const holding = holdings.find((h) => h.symbol === upper);
-  const { anthropicKey } = useAIStore();
+  const { anthropicKey, stockDetailCache, setStockDetailCache } = useAIStore();
+  const { apiKey: marketApiKey, provider } = useMarketStore();
   const canAnalyze = (USE_SERVER_KEY || !!anthropicKey) && !!holding;
+  const hasPolygonNews = provider === 'polygon' && !!marketApiKey;
+
+  // AI-generated content for this symbol (persisted across sessions)
+  const cachedEntry = stockDetailCache[upper];
 
   // Rich catalogue content (description, bull/bear, KPIs, etc.)
+  // Priority: AI-generated > mock catalogue > fallback
   const catalogue = MOCK_CATALOGUE[upper];
+  const aiData = cachedEntry?.data;
 
-  // Merged data object for the template — store wins on position fields
+  // Merged data object for the template — store wins on position fields, AI wins on content fields
   const data: StockData = {
     ...(catalogue ?? getFallbackData(upper)),
+    ...(aiData ? {
+      description: aiData.description,
+      bullCase:    aiData.bullCase,
+      bearCase:    aiData.bearCase,
+      kpis:        aiData.kpis,
+      risks:       aiData.risks,
+      catalysts:   aiData.catalysts,
+    } : {}),
     ...(holding ? {
       symbol:       holding.symbol,
       name:         holding.name,
@@ -267,14 +283,30 @@ export default function StockDetail() {
   const pnlPct       = totalCost > 0 ? (pnl / totalCost) * 100 : 0;
   const gain         = pnl >= 0;
 
-  // Enriched holding for single-stock AI analysis (live price applied, weight = 100%)
-  const analysisHolding: HoldingRecord[] = holding ? [{
-    ...holding,
-    currentValue,
-    pnl,
-    pnlPct,
-    weight: 100,
-  }] : [];
+  async function handleAnalyze(forceRefresh = false) {
+    if (!holding) return;
+    if (!forceRefresh && cachedEntry) return; // already have data
+    setGenerating(true);
+    setGenError(null);
+    try {
+      const recentNews = hasPolygonNews
+        ? (await fetchSymbolNews(upper, marketApiKey)).map(
+            (n) => `[${n.published}] ${n.title}${n.description ? ` — ${n.description.slice(0, 120)}` : ''}`,
+          )
+        : undefined;
+
+      const result = await generateStockDetail(holding, {
+        apiKey: anthropicKey || undefined,
+        currentPrice: quote?.price,
+        recentNews,
+      });
+      setStockDetailCache(upper, result);
+    } catch (err) {
+      setGenError(err instanceof Error ? err.message : 'Generation failed');
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   return (
     <>
@@ -296,10 +328,28 @@ export default function StockDetail() {
               <h1 className="text-2xl font-bold text-text-primary tracking-tight">{data.symbol}</h1>
               <Badge variant={data.type === 'crypto' ? 'warn' : 'accent'}>{data.type.toUpperCase()}</Badge>
               <Tag size="sm">{data.sector}</Tag>
-              {canAnalyze && (
-                <Button variant="secondary" size="sm" onClick={() => setShowAnalysis(true)}>
-                  <Sparkles size={13} />
-                  Analyze
+              {canAnalyze && !cachedEntry && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleAnalyze()}
+                  disabled={generating}
+                  title="Generate AI analysis for this holding"
+                >
+                  {generating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                  {generating ? 'Analyzing…' : 'Analyze'}
+                </Button>
+              )}
+              {canAnalyze && cachedEntry && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleAnalyze(true)}
+                  disabled={generating}
+                  title="Regenerate AI analysis"
+                >
+                  {generating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                  {generating ? 'Regenerating…' : 'Regenerate'}
                 </Button>
               )}
             </div>
@@ -347,17 +397,32 @@ export default function StockDetail() {
         </div>
       </div>
 
-      {/* ── AI analysis panel ───────────────────────────────────────── */}
-      <PortfolioAnalysis
-        open={showAnalysis}
-        onClose={() => setShowAnalysis(false)}
-        holdings={analysisHolding}
-        title={`AI Analysis · ${data.symbol}`}
-      />
-
       {/* ── Body ─────────────────────────────────────────────────────── */}
       <PageContainer>
         <div className="space-y-5">
+
+          {/* Error banner */}
+          {genError && (
+            <div className="p-3 rounded-lg bg-loss-subtle border border-loss-border text-xs text-loss-text">
+              {genError}
+            </div>
+          )}
+
+          {/* Generating banner */}
+          {generating && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-surface border border-surface-border text-xs text-text-muted">
+              <Loader2 size={12} className="animate-spin flex-shrink-0" />
+              Claude is generating analysis for {upper}…
+            </div>
+          )}
+
+          {/* AI-sourced badge */}
+          {cachedEntry && !generating && (
+            <div className="flex items-center gap-1.5 text-2xs text-text-muted">
+              <Sparkles size={11} className="text-accent" />
+              AI-generated · {formatDate(new Date(cachedEntry.timestamp).toISOString())}
+            </div>
+          )}
 
           {/* Row 1: Summary + Thesis */}
           <PageGrid cols={2}>

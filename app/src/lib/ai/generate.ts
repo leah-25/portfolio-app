@@ -2,6 +2,19 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const USE_SERVER_KEY = import.meta.env.VITE_USE_SERVER_KEY === 'true';
 
+// Format a news context map (symbol → headline strings) into a prompt block.
+function formatNewsBlock(news?: Record<string, string[]>): string {
+  if (!news) return '';
+  const symbols = Object.keys(news).filter((s) => (news[s]?.length ?? 0) > 0);
+  if (symbols.length === 0) return '';
+  const lines = ['Recent news context (use to inform your analysis):'];
+  for (const sym of symbols) {
+    lines.push(`${sym}:`);
+    news[sym].forEach((h) => lines.push(`  • ${h}`));
+  }
+  return lines.join('\n');
+}
+
 // ── Core caller ───────────────────────────────────────────────────────────────
 
 async function callClaude(
@@ -185,10 +198,14 @@ export async function generateTargetAllocations(
     riskLevel: string;
   }>,
   apiKey?: string,
+  newsContext?: Record<string, string[]>,
 ): Promise<GeneratedTargetAllocation[]> {
   const systemPrompt =
-    'You are a portfolio manager setting disciplined target allocations. ' +
-    'Targets must sum to exactly 100. Weight higher-conviction, lower-risk positions more. ' +
+    'You are a portfolio manager building an aggressive growth portfolio targeting 10× returns by 2030. ' +
+    'The investor accepts high volatility and concentrated risk in exchange for asymmetric upside. ' +
+    'Targets must sum to exactly 100. ' +
+    'Overweight high-conviction, high-upside positions even if risk is rated high. ' +
+    'Underweight or trim positions with thesis drift, low conviction, or limited upside to 10×. ' +
     'Respond with valid JSON only — no markdown, no explanation outside the JSON array.';
 
   const lines = holdings
@@ -200,13 +217,22 @@ export async function generateTargetAllocations(
     )
     .join('\n');
 
+  const newsBlock = formatNewsBlock(newsContext);
+
   const prompt =
-    `Set target weights for this portfolio:\n${lines}\n\n` +
-    `Rules: targets must sum to 100. Favour high-conviction, low-risk positions. ` +
-    `Reduce weight on thesis-drifted holdings. Keep targets in clean 5% increments where possible.\n\n` +
+    `Set target weights for this aggressive growth portfolio (goal: 10× by 2030):\n${lines}\n\n` +
+    (newsBlock ? `${newsBlock}\n\n` : '') +
+    `Rules:\n` +
+    `- Targets must sum to 100.\n` +
+    `- Prioritise positions with the highest potential for 10× upside by 2030.\n` +
+    `- High conviction (4–5/5) = earn a large allocation (20%+) if the 10× case is credible.\n` +
+    `- Thesis drift positions should be reduced or trimmed — they are no longer trusted.\n` +
+    `- Risk level alone is NOT a reason to reduce weight; upside potential is the primary driver.\n` +
+    `- Factor in recent news when assessing momentum and near-term risk to each position.\n` +
+    `- Keep targets in clean 1% increments.\n\n` +
     `Return a JSON array (one entry per holding):\n` +
     `[\n` +
-    `  { "symbol": "NVDA", "targetWeight": 25, "rationale": "one sentence" }\n` +
+    `  { "symbol": "RKLB", "targetWeight": 20, "rationale": "one sentence tying weight to 10× thesis" }\n` +
     `]`;
 
   const text = await callClaude(prompt, systemPrompt, apiKey);
@@ -236,10 +262,12 @@ export interface RebalanceRow {
 export async function generateRebalanceSuggestion(
   rows: RebalanceRow[],
   apiKey?: string,
+  newsContext?: Record<string, string[]>,
 ): Promise<GeneratedRebalance> {
   const systemPrompt =
-    'You are a disciplined portfolio manager. Suggest specific rebalance trades taking into account ' +
-    'allocation drift, conviction, thesis integrity, unrealised gains/losses, and risk level. ' +
+    'You are a disciplined portfolio manager running an aggressive growth portfolio with a 10× by 2030 goal. ' +
+    'Suggest specific rebalance trades that move the portfolio closer to its target weights and strengthen ' +
+    'the 10× thesis — prioritising the highest-upside positions. ' +
     'Respond with valid JSON only — no markdown, no explanation outside the JSON object.';
 
   const table = rows
@@ -250,25 +278,31 @@ export async function generateRebalanceSuggestion(
         `actual ${r.actual.toFixed(1)}%,`,
         `drift ${r.delta > 0 ? '+' : ''}${r.delta.toFixed(1)}%`,
       ];
-      if (r.pnlPct != null)   parts.push(`P&L ${r.pnlPct > 0 ? '+' : ''}${r.pnlPct.toFixed(1)}%`);
+      if (r.pnlPct != null)     parts.push(`P&L ${r.pnlPct > 0 ? '+' : ''}${r.pnlPct.toFixed(1)}%`);
       if (r.conviction != null) parts.push(`conviction ${r.conviction}/5`);
-      if (r.thesisDrift)      parts.push('THESIS DRIFT');
-      if (r.riskLevel)        parts.push(`risk=${r.riskLevel}`);
-      if (r.sector)           parts.push(`(${r.sector})`);
+      if (r.thesisDrift)        parts.push('THESIS DRIFT');
+      if (r.riskLevel)          parts.push(`risk=${r.riskLevel}`);
+      if (r.sector)             parts.push(`(${r.sector})`);
       return parts.join(' ');
     })
     .join('\n');
 
   const today = new Date().toISOString().slice(0, 10);
+  const newsBlock = formatNewsBlock(newsContext);
 
   const prompt =
-    `Portfolio analysis as of ${today}:\n${table}\n\n` +
-    `Suggest specific rebalance trades. Prioritise reducing drift on high-conviction holdings, ` +
-    `trimming positions with thesis drift, and consider tax efficiency (higher P&L = bigger tax hit on trim).\n\n` +
+    `Portfolio rebalance analysis as of ${today} (goal: 10× by 2030):\n${table}\n\n` +
+    (newsBlock ? `${newsBlock}\n\n` : '') +
+    `Suggest specific rebalance trades. Priorities in order:\n` +
+    `1. Trim positions that are above target — free up capital for underweights.\n` +
+    `2. Add to high-conviction positions that are below target — these are the 10× bets.\n` +
+    `3. Reduce or exit any thesis-drift positions — capital is better deployed elsewhere.\n` +
+    `4. Factor in recent news — a negative catalyst may warrant extra caution on a trim; a strong catalyst may justify adding sooner.\n` +
+    `5. Consider tax efficiency for trims (higher unrealised P&L = larger tax event).\n\n` +
     `Return JSON:\n` +
     `{\n` +
-    `  "action": "one-line summary of trades e.g. \\"Trimmed NVDA (+3%→0%), added MSFT (-3%→0%)\\"",\n` +
-    `  "rationale": "2–3 sentences explaining the rationale"\n` +
+    `  "action": "one-line summary of specific trades e.g. \\"Trim IREN (+4%→target), add RKLB (-3%→target)\\"",\n` +
+    `  "rationale": "2–3 sentences tying the trades to the 10× goal, current drift, and any relevant recent news"\n` +
     `}`;
 
   const text = await callClaude(prompt, systemPrompt, apiKey);
