@@ -253,28 +253,16 @@ export default function Rebalance() {
         actions={
           <div className="flex items-center gap-2">
             {hasAI && (
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleSuggestTargets}
-                  disabled={generating}
-                  title="AI suggests target weights for all holdings"
-                >
-                  {generatingTargets ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                  Suggest targets
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleSuggestAction}
-                  disabled={generating || rowsForAction.length === 0}
-                  title="AI suggests a rebalance trade based on current drift"
-                >
-                  {generatingActions ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                  Suggest action
-                </Button>
-              </>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleSuggestAction}
+                disabled={generating || rowsForAction.length === 0}
+                title="AI suggests a rebalance trade based on current drift"
+              >
+                {generatingActions ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                Suggest action
+              </Button>
             )}
             <Button variant="primary" size="sm" onClick={openAdd}>
               <Plus size={14} />
@@ -314,6 +302,17 @@ export default function Rebalance() {
                         Discard
                       </Button>
                     </div>
+                  ) : hasAI && holdings.length > 0 ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleSuggestTargets}
+                      disabled={generatingTargets}
+                      title="AI suggests target weights for all holdings"
+                    >
+                      {generatingTargets ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                      Suggest targets
+                    </Button>
                   ) : undefined
                 }
               />
