@@ -11,7 +11,7 @@ import RebalanceLogForm from './RebalanceLogForm';
 import { useRebalanceStore, type RebalanceEntry } from '../../store/rebalanceStore';
 import { useHoldingsStore } from '../../store/holdingsStore';
 import { useAIStore } from '../../store/aiStore';
-import { generateRebalanceSuggestion } from '../../lib/ai/generate';
+import { generateRebalanceSuggestion, type RebalanceRow } from '../../lib/ai/generate';
 
 const USE_SERVER_KEY = import.meta.env.VITE_USE_SERVER_KEY === 'true';
 
@@ -27,14 +27,19 @@ export default function Rebalance() {
   const [generating, setGenerating]   = useState(false);
   const [genError, setGenError]       = useState<string | null>(null);
 
-  // Derive target vs actual from holdings store
-  const allocationRows = holdings
+  // Derive target vs actual from holdings store (enriched for AI)
+  const allocationRows: RebalanceRow[] = holdings
     .filter((h) => h.targetWeight != null)
     .map((h) => ({
-      symbol: h.symbol,
-      target: h.targetWeight ?? 0,
-      actual: parseFloat(h.weight.toFixed(1)),
-      delta:  parseFloat((h.weight - (h.targetWeight ?? 0)).toFixed(1)),
+      symbol:      h.symbol,
+      target:      h.targetWeight ?? 0,
+      actual:      parseFloat(h.weight.toFixed(1)),
+      delta:       parseFloat((h.weight - (h.targetWeight ?? 0)).toFixed(1)),
+      pnlPct:      h.pnlPct,
+      conviction:  h.conviction,
+      thesisDrift: h.thesisDrift,
+      riskLevel:   h.riskLevel,
+      sector:      h.sector,
     }))
     .sort((a, b) => b.target - a.target);
 
