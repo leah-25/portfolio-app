@@ -8,50 +8,15 @@ import Tabs from '../../components/ui/Tabs';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import AnalysisNoteDetail from './AnalysisNoteDetail';
+import NoteForm from './NoteForm';
+import NoteDetail from './NoteDetail';
 import { useResearchNotesStore, type AnalysisNote } from '../../store/researchNotesStore';
+import { useNotesStore, type ManualNote } from '../../store/notesStore';
 
 const TABS = [
   { key: 'weekly',    label: 'Weekly' },
   { key: 'quarterly', label: 'Quarterly' },
   { key: 'ai',        label: 'AI Analysis' },
-];
-
-const MOCK_WEEKLY = [
-  {
-    id: '1',
-    period: 'Week 11 · 2025',
-    title: 'NVDA earnings preview — data center demand holding strong',
-    excerpt: 'Ahead of the Q1 earnings, checks with channel partners suggest hyperscaler orders remain robust. The Blackwell ramp appears on track. Maintaining full position with high conviction.',
-    tags: ['NVDA', 'semiconductors', 'AI'],
-    updatedAt: '2025-03-10T14:22:00Z',
-  },
-  {
-    id: '2',
-    period: 'Week 10 · 2025',
-    title: 'Macro update — Fed rhetoric and impact on growth assets',
-    excerpt: "Powell's tone was more hawkish than expected. Risk assets sold off broadly. TSLA hit hardest in our portfolio. Reviewed thesis and holding — fundamentals unchanged.",
-    tags: ['TSLA', 'MSFT', 'macro'],
-    updatedAt: '2025-03-03T09:10:00Z',
-  },
-  {
-    id: '3',
-    period: 'Week 9 · 2025',
-    title: 'BTC consolidation — on-chain metrics and thesis check',
-    excerpt: 'On-chain data shows accumulation by long-term holders. ETF inflows remain positive. No thesis drift. Target allocation maintained.',
-    tags: ['BTC', 'crypto'],
-    updatedAt: '2025-02-24T18:45:00Z',
-  },
-];
-
-const MOCK_QUARTERLY: typeof MOCK_WEEKLY = [
-  {
-    id: 'q1',
-    period: 'Q1 2025',
-    title: 'Q1 portfolio review — rebalance, thesis drift assessment',
-    excerpt: 'NVDA weight has drifted +3% above target following the strong Jan rally. Reducing slightly to fund AMZN position. All core theses intact. Risk register reviewed.',
-    tags: ['NVDA', 'AMZN', 'rebalance'],
-    updatedAt: '2025-03-31T12:00:00Z',
-  },
 ];
 
 function formatNoteDate(ts: number): string {
@@ -61,7 +26,6 @@ function formatNoteDate(ts: number): string {
 }
 
 function noteExcerpt(aiResponse: string): string {
-  // First non-empty line that isn't a heading
   const firstPara = aiResponse.split('\n').find(
     (l) => l.trim() && !l.startsWith('#')
   ) ?? '';
@@ -71,18 +35,21 @@ function noteExcerpt(aiResponse: string): string {
 export default function Notes() {
   const [tab, setTab] = useState<'weekly' | 'quarterly' | 'ai'>('weekly');
   const [search, setSearch] = useState('');
-  const [selectedNote, setSelectedNote] = useState<AnalysisNote | null>(null);
+  const [selectedAiNote, setSelectedAiNote]     = useState<AnalysisNote | null>(null);
+  const [selectedManualNote, setSelectedManualNote] = useState<ManualNote | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
 
-  const { notes: aiNotes, deleteNote } = useResearchNotesStore();
+  const { notes: aiNotes, deleteNote: deleteAiNote } = useResearchNotesStore();
+  const { notes: manualNotes } = useNotesStore();
 
-  const manualNotes = tab === 'weekly' ? MOCK_WEEKLY : MOCK_QUARTERLY;
+  const typedNotes = manualNotes.filter((n) => n.type === tab as 'weekly' | 'quarterly');
 
   const filteredManual = search
-    ? manualNotes.filter((n) =>
+    ? typedNotes.filter((n) =>
         n.title.toLowerCase().includes(search.toLowerCase()) ||
         n.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()))
       )
-    : manualNotes;
+    : typedNotes;
 
   const filteredAI = search
     ? aiNotes.filter((n) =>
@@ -98,7 +65,7 @@ export default function Notes() {
         description="Weekly check-ins, quarterly reviews, and AI analysis snapshots"
         actions={
           tab !== 'ai' ? (
-            <Button variant="primary" size="sm">
+            <Button variant="primary" size="sm" onClick={() => setFormOpen(true)}>
               <Plus size={14} />
               New note
             </Button>
@@ -127,7 +94,7 @@ export default function Notes() {
               title={`No ${tab} notes yet`}
               description="Start recording your research to track how your thesis evolves over time."
               action={
-                <Button variant="primary" size="sm">
+                <Button variant="primary" size="sm" onClick={() => setFormOpen(true)}>
                   <Plus size={14} />
                   Add first note
                 </Button>
@@ -141,10 +108,10 @@ export default function Notes() {
                   type={tab}
                   period={note.period}
                   title={note.title}
-                  excerpt={note.excerpt}
+                  excerpt={note.body.slice(0, 160)}
                   tags={note.tags}
                   updatedAt={note.updatedAt}
-                  onClick={() => {}}
+                  onClick={() => setSelectedManualNote(note)}
                 />
               ))}
             </div>
@@ -174,7 +141,7 @@ export default function Notes() {
                   excerpt={noteExcerpt(note.aiResponse)}
                   tags={note.symbols.slice(0, 6)}
                   updatedAt={new Date(note.timestamp).toISOString()}
-                  onClick={() => setSelectedNote(note)}
+                  onClick={() => setSelectedAiNote(note)}
                 />
               ))}
             </div>
@@ -182,11 +149,24 @@ export default function Notes() {
         )}
       </PageContainer>
 
-      {/* Detail panel */}
+      {/* AI detail panel */}
       <AnalysisNoteDetail
-        note={selectedNote}
-        onClose={() => setSelectedNote(null)}
-        onDelete={(id) => { deleteNote(id); setSelectedNote(null); }}
+        note={selectedAiNote}
+        onClose={() => setSelectedAiNote(null)}
+        onDelete={(id) => { deleteAiNote(id); setSelectedAiNote(null); }}
+      />
+
+      {/* Manual note detail panel */}
+      <NoteDetail
+        note={selectedManualNote}
+        onClose={() => setSelectedManualNote(null)}
+      />
+
+      {/* Add note form */}
+      <NoteForm
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        defaultType={tab === 'ai' ? 'weekly' : tab}
       />
     </>
   );

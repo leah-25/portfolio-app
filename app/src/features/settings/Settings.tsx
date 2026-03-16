@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { CheckCircle2, ShieldCheck } from 'lucide-react';
 import PageHeader from '../../components/layout/PageHeader';
 import PageContainer from '../../components/layout/PageContainer';
@@ -8,6 +8,11 @@ import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
 import { useMarketStore } from '../../store/marketStore';
 import { useAIStore } from '../../store/aiStore';
+import { useHoldingsStore } from '../../store/holdingsStore';
+import { useNotesStore } from '../../store/notesStore';
+import { useRiskStore } from '../../store/riskStore';
+import { useRebalanceStore } from '../../store/rebalanceStore';
+import { useResearchNotesStore } from '../../store/researchNotesStore';
 import type { ProviderName } from '../../lib/marketData';
 
 export default function Settings() {
@@ -22,6 +27,14 @@ export default function Settings() {
   const [aiKeyDraft, setAiKeyDraft] = useState(anthropicKey);
   const [aiSaved,    setAiSaved]    = useState(false);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const holdingsStore  = useHoldingsStore();
+  const notesStore     = useNotesStore();
+  const riskStore      = useRiskStore();
+  const rebalanceStore = useRebalanceStore();
+  const aiNotesStore   = useResearchNotesStore();
+
   function handleSave() {
     setApiKey(keyDraft);
     setProvider(providerDraft);
@@ -35,6 +48,70 @@ export default function Settings() {
     setAnthropicKey(aiKeyDraft);
     setAiSaved(true);
     setTimeout(() => setAiSaved(false), 2500);
+  }
+
+  function handleExport() {
+    const data = {
+      holdings:   holdingsStore.holdings,
+      notes:      notesStore.notes,
+      risk:       riskStore.entries,
+      rebalance:  rebalanceStore.entries,
+      aiNotes:    aiNotesStore.notes,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `portfolio-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImportClick() {
+    fileInputRef.current?.click();
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string);
+        if (data.holdings)  holdingsStore.holdings; // read only guard
+        // Use zustand setState directly via the store actions
+        if (Array.isArray(data.holdings)) {
+          useHoldingsStore.setState({ holdings: data.holdings });
+        }
+        if (Array.isArray(data.notes)) {
+          useNotesStore.setState({ notes: data.notes });
+        }
+        if (Array.isArray(data.risk)) {
+          useRiskStore.setState({ entries: data.risk });
+        }
+        if (Array.isArray(data.rebalance)) {
+          useRebalanceStore.setState({ entries: data.rebalance });
+        }
+        if (Array.isArray(data.aiNotes)) {
+          useResearchNotesStore.setState({ notes: data.aiNotes });
+        }
+        alert('Import successful! Your data has been restored.');
+      } catch {
+        alert('Import failed — the file does not appear to be a valid portfolio export.');
+      }
+    };
+    reader.readAsText(file);
+    // Reset so the same file can be re-imported
+    e.target.value = '';
+  }
+
+  function handleClearData() {
+    if (!window.confirm('This will permanently delete all your holdings, notes, and data. Are you sure?')) return;
+    useHoldingsStore.setState({ holdings: [] });
+    useNotesStore.setState({ notes: [] });
+    useRiskStore.setState({ entries: [] });
+    useRebalanceStore.setState({ entries: [] });
+    useResearchNotesStore.setState({ notes: [] });
   }
 
   const dirty   = keyDraft !== apiKey || providerDraft !== provider || intervalDraft !== String(refreshInterval);
@@ -96,7 +173,7 @@ export default function Settings() {
 
               {providerDraft === 'polygon' && (
                 <div className="p-3 rounded-lg bg-accent-subtle border border-accent-border/40 text-xs text-text-secondary leading-relaxed">
-                  <strong className="text-text-primary">Polygon.io</strong> — free tier includes end-of-day data; paid plans add real-time.
+                  <strong className="text-text-primary">Polygon.io</strong> — free tier includes end-of-day data (previous close).
                   Get a key at{' '}
                   <a href="https://polygon.io/dashboard/signup" target="_blank" rel="noreferrer"
                     className="text-accent underline hover:text-accent-hover">
@@ -211,15 +288,22 @@ export default function Settings() {
           <Card>
             <CardHeader title="Data" subtitle="Export and import your portfolio data" />
             <div className="flex flex-wrap gap-3">
-              <Button variant="secondary" size="md">Export JSON</Button>
-              <Button variant="ghost" size="md">Import JSON</Button>
+              <Button variant="secondary" size="md" onClick={handleExport}>Export JSON</Button>
+              <Button variant="ghost" size="md" onClick={handleImportClick}>Import JSON</Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={handleImportFile}
+              />
             </div>
             <CardDivider />
             <div>
               <p className="text-xs text-text-muted mb-3">
                 All data is stored locally in your browser. No account or server required.
               </p>
-              <Button variant="danger" size="sm">Clear all data</Button>
+              <Button variant="danger" size="sm" onClick={handleClearData}>Clear all data</Button>
             </div>
           </Card>
         </div>

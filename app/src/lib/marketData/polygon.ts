@@ -13,94 +13,83 @@ const FROM_POLYGON: Record<string, string> = Object.fromEntries(
 function toPolygon(symbol: string): string   { return TO_POLYGON[symbol]   ?? symbol; }
 function fromPolygon(symbol: string): string { return FROM_POLYGON[symbol] ?? symbol; }
 
-// Polygon snapshot response shapes
-interface PolygonDay {
-  c:  number;  // close
+// Polygon aggregates bar (free-tier compatible)
+interface PolygonBar {
+  T?: string;  // ticker (present in grouped results)
+  o:  number;  // open
   h:  number;  // high
   l:  number;  // low
+  c:  number;  // close
   v:  number;  // volume
-  vw: number;  // VWAP
+  t:  number;  // timestamp ms
 }
 
-interface PolygonPrevDay {
-  c: number;
+interface PolygonAggResponse {
+  ticker?:       string;
+  status:        string;
+  resultsCount?: number;
+  results?:      PolygonBar[];
+  error?:        string;
+  message?:      string;
 }
 
-interface PolygonTicker {
-  ticker:    string;
-  day:       PolygonDay;
-  prevDay:   PolygonPrevDay;
-  lastQuote: { P: number };  // ask price (used as current price for crypto)
-  lastTrade: { p: number };  // last trade price (stocks)
-  min:       { c: number };  // most recent minute close
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
-interface PolygonSnapshotResponse {
-  tickers?: PolygonTicker[];
-  status:   string;
-  error?:   string;
+async function fetchSymbolQuote(symbol: string, apiKey: string): Promise<Quote | null> {
+  const polygonTicker = toPolygon(symbol);
+  const now  = new Date();
+  const from = new Date(now);
+  from.setDate(from.getDate() - 10);  // go back 10 calendar days to cover weekends/holidays
+
+  const url = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(polygonTicker)}/range/1/day/${isoDate(from)}/${isoDate(now)}?adjusted=true&sort=asc&limit=3&apiKey=${apiKey}`;
+
+  const res = await fetch(url);
+
+  if (res.status === 401 || res.status === 403) {
+    throw new Error('Invalid Polygon API key — check your key in Settings.');
+  }
+  if (!res.ok) {
+    throw new Error(`Polygon request failed (HTTP ${res.status}).`);
+  }
+
+  const data: PolygonAggResponse = await res.json() as PolygonAggResponse;
+
+  if (data.status === 'ERROR' || data.error) {
+    throw new Error(data.error ?? data.message ?? 'Unexpected error from Polygon.');
+  }
+
+  const bars = data.results ?? [];
+  if (bars.length === 0) return null;
+
+  const latest   = bars[bars.length - 1];
+  const previous = bars.length >= 2 ? bars[bars.length - 2] : null;
+
+  const price      = latest.c;
+  const prevClose  = previous?.c ?? 0;
+  const change     = prevClose > 0 ? price - prevClose : 0;
+  const changePct  = prevClose > 0 ? (change / prevClose) * 100 : 0;
+
+  return {
+    symbol:        fromPolygon(polygonTicker),
+    price,
+    change,
+    changePercent: changePct,
+    marketCap:     0,
+    dayHigh:       latest.h,
+    dayLow:        latest.l,
+    volume:        latest.v,
+    previousClose: prevClose,
+    updatedAt:     Date.now(),
+  };
 }
 
 export const polygonProvider: MarketProvider = {
   async fetchQuotes(symbols, apiKey) {
-    const polygonSymbols = symbols.map(toPolygon);
-
-    // Separate stocks and crypto — they use different snapshot endpoints
-    const stockSymbols  = polygonSymbols.filter(s => !s.startsWith('X:'));
-    const cryptoSymbols = polygonSymbols.filter(s =>  s.startsWith('X:'));
-
-    const results: Quote[] = [];
-    const now = Date.now();
-
-    async function fetchSnapshot(tickerList: string[], locale: 'stocks' | 'crypto'): Promise<void> {
-      if (tickerList.length === 0) return;
-
-      const joined = tickerList.join(',');
-      const url = locale === 'stocks'
-        ? `https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers?tickers=${joined}&apiKey=${apiKey}`
-        : `https://api.polygon.io/v2/snapshot/locale/global/markets/crypto/tickers?tickers=${joined}&apiKey=${apiKey}`;
-
-      const res = await fetch(url);
-
-      if (res.status === 401 || res.status === 403) {
-        throw new Error('Invalid API key — check your Polygon key in Settings.');
-      }
-      if (!res.ok) {
-        throw new Error(`Market data request failed (HTTP ${res.status}).`);
-      }
-
-      const data: PolygonSnapshotResponse = await res.json() as PolygonSnapshotResponse;
-
-      if (data.status === 'ERROR' || data.error) {
-        throw new Error(data.error ?? 'Unexpected error from Polygon.');
-      }
-
-      for (const t of data.tickers ?? []) {
-        const close    = t.min?.c ?? t.lastTrade?.p ?? t.lastQuote?.P ?? t.day?.c ?? 0;
-        const prevClose = t.prevDay?.c ?? 0;
-        const change    = prevClose > 0 ? close - prevClose : 0;
-        const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
-
-        results.push({
-          symbol:        fromPolygon(t.ticker),
-          price:         close,
-          change,
-          changePercent: changePct,
-          marketCap:     0,   // not in snapshot endpoint; would need details call
-          dayHigh:       t.day?.h    ?? 0,
-          dayLow:        t.day?.l    ?? 0,
-          volume:        t.day?.v    ?? 0,
-          previousClose: prevClose,
-          updatedAt:     now,
-        });
-      }
-    }
-
-    await Promise.all([
-      fetchSnapshot(stockSymbols,  'stocks'),
-      fetchSnapshot(cryptoSymbols, 'crypto'),
-    ]);
-
-    return results;
+    const results = await Promise.all(
+      symbols.map((s) => fetchSymbolQuote(s, apiKey))
+    );
+    return results.filter((q): q is Quote => q !== null);
   },
 };
