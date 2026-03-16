@@ -40,7 +40,11 @@ export interface GeneratedStockDetail {
 const SYSTEM_PROMPT = `You are a financial research assistant. Generate a structured analysis for a stock or asset position.
 Return ONLY valid JSON — no markdown fences, no explanation, no text outside the JSON object.`;
 
-function buildStockDetailPrompt(holding: HoldingRecord, currentPrice?: number): string {
+function buildStockDetailPrompt(
+  holding: HoldingRecord,
+  currentPrice?: number,
+  recentNews?: string[],
+): string {
   const value = currentPrice
     ? holding.quantity * currentPrice
     : holding.currentValue;
@@ -59,7 +63,10 @@ Position details:
 - Conviction: ${holding.conviction ?? 3}/5
 - Risk level: ${holding.riskLevel}
 - Investment thesis: ${thesis}
-
+${recentNews && recentNews.length > 0 ? `
+Recent news (use to ground your analysis in current context):
+${recentNews.map((h) => `  • ${h}`).join('\n')}
+` : ''}
 Return a JSON object with EXACTLY this structure (no extra fields, no markdown):
 {
   "description": "2–3 sentence description of what this company/asset does and its primary value driver",
@@ -201,9 +208,9 @@ const USE_SERVER_KEY = import.meta.env.VITE_USE_SERVER_KEY === 'true';
 
 export async function generateStockDetail(
   holding: HoldingRecord,
-  opts: { apiKey?: string; currentPrice?: number } = {},
+  opts: { apiKey?: string; currentPrice?: number; recentNews?: string[] } = {},
 ): Promise<GeneratedStockDetail> {
-  const prompt = buildStockDetailPrompt(holding, opts.currentPrice);
+  const prompt = buildStockDetailPrompt(holding, opts.currentPrice, opts.recentNews);
 
   const raw = opts.apiKey
     ? await generateDirectly(prompt, opts.apiKey)

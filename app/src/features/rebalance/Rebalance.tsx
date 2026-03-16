@@ -11,12 +11,14 @@ import RebalanceLogForm from './RebalanceLogForm';
 import { useRebalanceStore, type RebalanceEntry } from '../../store/rebalanceStore';
 import { useHoldingsStore } from '../../store/holdingsStore';
 import { useAIStore } from '../../store/aiStore';
+import { useMarketStore } from '../../store/marketStore';
 import {
   generateRebalanceSuggestion,
   generateTargetAllocations,
   type RebalanceRow,
   type GeneratedTargetAllocation,
 } from '../../lib/ai/generate';
+import { fetchNewsContext } from '../../lib/marketData/polygonNews';
 
 const USE_SERVER_KEY = import.meta.env.VITE_USE_SERVER_KEY === 'true';
 
@@ -115,9 +117,11 @@ function TargetCell({
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function Rebalance() {
   const { entries, deleteEntry }       = useRebalanceStore();
-  const { holdings, updateHolding }    = useHoldingsStore();
-  const { anthropicKey }               = useAIStore();
+  const { holdings, updateHolding }            = useHoldingsStore();
+  const { anthropicKey }                       = useAIStore();
+  const { apiKey: marketApiKey, provider }     = useMarketStore();
   const hasAI = USE_SERVER_KEY || !!anthropicKey;
+  const hasPolygonNews = provider === 'polygon' && !!marketApiKey;
 
   const [formOpen, setFormOpen]         = useState(false);
   const [editTarget, setEditTarget]     = useState<RebalanceEntry | null>(null);
@@ -203,6 +207,11 @@ export default function Rebalance() {
     setGeneratingTargets(true);
     setGenError(null);
     try {
+      const symbols = holdings.map((h) => h.symbol);
+      const newsContext = hasPolygonNews
+        ? await fetchNewsContext(symbols, marketApiKey)
+        : undefined;
+
       const results = await generateTargetAllocations(
         holdings.map((h) => ({
           symbol: h.symbol, name: h.name, type: h.type, sector: h.sector,
@@ -210,6 +219,7 @@ export default function Rebalance() {
           thesisDrift: h.thesisDrift, riskLevel: h.riskLevel,
         })),
         anthropicKey || undefined,
+        newsContext,
       );
       // Stage as pending (don't save yet)
       const map: Record<string, number | null> = {};
@@ -229,7 +239,16 @@ export default function Rebalance() {
     setGeneratingActions(true);
     setGenError(null);
     try {
-      const result = await generateRebalanceSuggestion(rowsForAction, anthropicKey || undefined);
+      const symbols = rowsForAction.map((r) => r.symbol);
+      const newsContext = hasPolygonNews
+        ? await fetchNewsContext(symbols, marketApiKey)
+        : undefined;
+
+      const result = await generateRebalanceSuggestion(
+        rowsForAction,
+        anthropicKey || undefined,
+        newsContext,
+      );
       setEditTarget(null);
       setFormPrefill({ action: result.action, rationale: result.rationale });
       setFormOpen(true);

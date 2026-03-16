@@ -18,6 +18,7 @@ import { useHoldingsStore } from '../../store/holdingsStore';
 import { useAIStore } from '../../store/aiStore';
 import { formatCurrency, formatCompact, formatPct, formatDate } from '../../lib/formatters';
 import { generateStockDetail } from '../../lib/analysis/stockDetail';
+import { fetchSymbolNews } from '../../lib/marketData/polygonNews';
 
 // ── Mock data catalogue ───────────────────────────────────────────────────────
 
@@ -227,7 +228,9 @@ export default function StockDetail() {
   const { holdings } = useHoldingsStore();
   const holding = holdings.find((h) => h.symbol === upper);
   const { anthropicKey, stockDetailCache, setStockDetailCache } = useAIStore();
+  const { apiKey: marketApiKey, provider } = useMarketStore();
   const canAnalyze = (USE_SERVER_KEY || !!anthropicKey) && !!holding;
+  const hasPolygonNews = provider === 'polygon' && !!marketApiKey;
 
   // AI-generated content for this symbol (persisted across sessions)
   const cachedEntry = stockDetailCache[upper];
@@ -286,9 +289,16 @@ export default function StockDetail() {
     setGenerating(true);
     setGenError(null);
     try {
+      const recentNews = hasPolygonNews
+        ? (await fetchSymbolNews(upper, marketApiKey)).map(
+            (n) => `[${n.published}] ${n.title}${n.description ? ` — ${n.description.slice(0, 120)}` : ''}`,
+          )
+        : undefined;
+
       const result = await generateStockDetail(holding, {
         apiKey: anthropicKey || undefined,
         currentPrice: quote?.price,
+        recentNews,
       });
       setStockDetailCache(upper, result);
     } catch (err) {
