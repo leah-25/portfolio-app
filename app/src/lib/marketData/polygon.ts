@@ -43,7 +43,9 @@ async function fetchSymbolQuote(symbol: string, apiKey: string): Promise<Quote |
   const from = new Date(now);
   from.setDate(from.getDate() - 10);  // go back 10 calendar days to cover weekends/holidays
 
-  const url = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(polygonTicker)}/range/1/day/${isoDate(from)}/${isoDate(now)}?adjusted=true&sort=asc&limit=3&apiKey=${apiKey}`;
+  // Use sort=desc&limit=2 to get the 2 most recent trading-day bars.
+  // Do NOT encodeURIComponent the ticker — Polygon expects the literal colon in X:BTCUSD.
+  const url = `https://api.polygon.io/v2/aggs/ticker/${polygonTicker}/range/1/day/${isoDate(from)}/${isoDate(now)}?adjusted=true&sort=desc&limit=2&apiKey=${apiKey}`;
 
   const res = await fetch(url);
 
@@ -63,8 +65,9 @@ async function fetchSymbolQuote(symbol: string, apiKey: string): Promise<Quote |
   const bars = data.results ?? [];
   if (bars.length === 0) return null;
 
-  const latest   = bars[bars.length - 1];
-  const previous = bars.length >= 2 ? bars[bars.length - 2] : null;
+  // sort=desc: bars[0] = most recent day, bars[1] = previous day
+  const latest   = bars[0];
+  const previous = bars.length >= 2 ? bars[1] : null;
 
   const price      = latest.c;
   const prevClose  = previous?.c ?? 0;
