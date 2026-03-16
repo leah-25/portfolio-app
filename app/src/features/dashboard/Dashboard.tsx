@@ -251,12 +251,17 @@ function QuickNavTile({ to, Icon, label, meta }: { to: string; Icon: LucideIcon;
 
 export default function Dashboard() {
   const { holdings } = useHoldingsStore();
-  const { quotes, loading, lastUpdated, refresh } = useMarketStore();
+  const { quotes, loading, lastUpdated, refreshInterval, refresh } = useMarketStore();
 
   // ── Market data refresh ──────────────────────────────────────────────────
   const allSymbols = useMemo(() => holdings.map((h) => h.symbol), [holdings]);
   const doRefresh  = useCallback(() => refresh(allSymbols), [refresh, allSymbols]);
-  useEffect(() => { doRefresh(); }, [doRefresh]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    doRefresh();
+    if (refreshInterval <= 0) return;
+    const id = setInterval(doRefresh, refreshInterval * 60 * 1000);
+    return () => clearInterval(id);
+  }, [doRefresh, refreshInterval]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Enrich with live prices ──────────────────────────────────────────────
   const enriched = useMemo(() =>
