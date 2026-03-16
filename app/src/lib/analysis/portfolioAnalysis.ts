@@ -90,7 +90,6 @@ async function analyzeDirectly(opts: AnalysisOptions): Promise<void> {
     {
       model: 'claude-opus-4-6',
       max_tokens: 2048,
-      thinking: { type: 'adaptive' },
       messages: [{ role: 'user', content: buildPrompt(holdings, quotes) }],
     },
     { signal },
