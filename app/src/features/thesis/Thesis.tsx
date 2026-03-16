@@ -11,7 +11,8 @@ import HoldingForm from '../holdings/HoldingForm';
 import { formatRelative } from '../../lib/formatters';
 import { useHoldingsStore } from '../../store/holdingsStore';
 import { useAIStore } from '../../store/aiStore';
-import { generateThesis } from '../../lib/ai/generate';
+import { usePortfolioGoalStore } from '../../store/portfolioStore';
+import { generateThesis, buildGoalContext } from '../../lib/ai/generate';
 import type { HoldingRecord } from '../../store/holdingsStore';
 
 const USE_SERVER_KEY = import.meta.env.VITE_USE_SERVER_KEY === 'true';
@@ -26,6 +27,7 @@ const CONVICTION_VARIANT: Record<number, 'muted' | 'default' | 'warn' | 'gain' |
 export default function Thesis() {
   const { holdings, updateHolding } = useHoldingsStore();
   const { anthropicKey } = useAIStore();
+  const { goalMultiple, goalYear } = usePortfolioGoalStore();
   const hasAI = USE_SERVER_KEY || !!anthropicKey;
 
   const [formOpen, setFormOpen]       = useState(false);
@@ -46,6 +48,7 @@ export default function Thesis() {
       const result = await generateThesis(
         { symbol: h.symbol, name: h.name, type: h.type, sector: h.sector, weight: h.weight },
         anthropicKey || undefined,
+        buildGoalContext(goalMultiple, goalYear),
       );
       updateHolding(h.id, {
         thesisBody:   result.thesisBody,

@@ -2,6 +2,47 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const USE_SERVER_KEY = import.meta.env.VITE_USE_SERVER_KEY === 'true';
 
+// ── Goal context ──────────────────────────────────────────────────────────────
+
+export interface GoalContext {
+  multiple:       number;   // e.g. 10
+  year:           number;   // e.g. 2030
+  yearsRemaining: number;
+  label:          string;   // e.g. "10× by 2030 (4.8 years remaining)"
+  runwayNote:     string | null;  // non-null when runway is short
+}
+
+export function buildGoalContext(multiple: number, year: number): GoalContext {
+  const now    = new Date();
+  const target = new Date(year, 11, 31); // Dec 31 of target year
+  const yearsRemaining = Math.max(
+    0,
+    (target.getTime() - now.getTime()) / (365.25 * 24 * 3600 * 1000),
+  );
+  const label = `${multiple}× by ${year} (${yearsRemaining.toFixed(1)} years remaining)`;
+
+  let runwayNote: string | null = null;
+  if (yearsRemaining < 1) {
+    runwayNote =
+      `CRITICAL: under 1 year remaining. Only hold positions with imminent, confirmed catalysts. ` +
+      `Exit speculative long-duration bets immediately.`;
+  } else if (yearsRemaining < 2) {
+    runwayNote =
+      `SHORT RUNWAY (${yearsRemaining.toFixed(1)} yrs): shift decisively toward positions with ` +
+      `confirmed near-term catalysts. Trim or exit early-stage names that need 3+ years to mature.`;
+  } else if (yearsRemaining < 3) {
+    runwayNote =
+      `MODERATE RUNWAY (${yearsRemaining.toFixed(1)} yrs): balance aggressive bets with positions ` +
+      `that have near-term catalysts. Reduce deep-speculative exposure.`;
+  }
+
+  return { multiple, year, yearsRemaining, label, runwayNote };
+}
+
+const DEFAULT_GOAL = buildGoalContext(10, 2030);
+
+// ── News context ──────────────────────────────────────────────────────────────
+
 // Format a news context map (symbol → headline strings) into a prompt block.
 function formatNewsBlock(news?: Record<string, string[]>): string {
   if (!news) return '';
@@ -67,10 +108,12 @@ export interface GeneratedThesis {
 export async function generateThesis(
   holding: { symbol: string; name: string; type: string; sector: string; weight: number },
   apiKey?: string,
+  goal: GoalContext = DEFAULT_GOAL,
 ): Promise<GeneratedThesis> {
   const systemPrompt =
-    'You are a professional investment analyst. Write concise, high-signal investment theses. ' +
-    'Respond with valid JSON only — no markdown, no explanation outside the JSON object.';
+    `You are a professional investment analyst building an aggressive growth portfolio with a ` +
+    `${goal.label} goal. Write concise, high-signal investment theses evaluated against that target. ` +
+    `Respond with valid JSON only — no markdown, no explanation outside the JSON object.`;
 
   const prompt =
     `Write an investment thesis for:\n` +
@@ -79,10 +122,13 @@ export async function generateThesis(
     `Type: ${holding.type}\n` +
     `Sector: ${holding.sector}\n` +
     `Portfolio weight: ${holding.weight.toFixed(1)}%\n\n` +
+    `The thesis must directly address whether this position has a credible path to ${goal.multiple}× ` +
+    `by ${goal.year} (${goal.yearsRemaining.toFixed(1)} years from now). ` +
+    `If the ${goal.multiple}× case is weak, say so clearly and suggest an appropriate conviction score.\n\n` +
     `Return JSON:\n` +
     `{\n` +
-    `  "thesisBody": "3-4 sentences covering the core bull case, competitive moat, key catalyst, and main risk",\n` +
-    `  "conviction": <integer 1–5 where 1=tentative, 3=moderate, 5=highest conviction>\n` +
+    `  "thesisBody": "3-4 sentences: core bull case for ${goal.multiple}×, competitive moat, key catalyst, and main risk",\n` +
+    `  "conviction": <integer 1–5 where 1=weak ${goal.multiple}× case, 3=plausible, 5=highest conviction>\n` +
     `}`;
 
   const text = await callClaude(prompt, systemPrompt, apiKey);
@@ -102,9 +148,11 @@ export async function generateNote(
   holdings: Array<{ symbol: string; weight: number; thesisDrift: boolean }>,
   type: 'weekly' | 'quarterly',
   apiKey?: string,
+  goal: GoalContext = DEFAULT_GOAL,
 ): Promise<GeneratedNote> {
   const systemPrompt =
-    'You are a portfolio manager writing investment research notes. ' +
+    `You are a portfolio manager writing investment research notes for an aggressive growth portfolio ` +
+    `targeting ${goal.label}. ` +
     'Respond with valid JSON only — no markdown, no explanation outside the JSON object.';
 
   const summary = holdings
@@ -123,12 +171,14 @@ export async function generateNote(
   const prompt =
     `Write a ${type} portfolio research note.\n` +
     `Date: ${dateStr}\n` +
+    `Goal: ${goal.label}\n` +
     `Portfolio: ${summary}\n\n` +
+    (goal.runwayNote ? `⚠️ ${goal.runwayNote}\n\n` : '') +
     `Return JSON:\n` +
     `{\n` +
     `  "period": "${defaultPeriod}",\n` +
     `  "title": "concise title for this note",\n` +
-    `  "body": "3–4 paragraph research note: key observations, thesis updates, risks on the radar, forward outlook",\n` +
+    `  "body": "3–4 paragraph research note: progress toward ${goal.multiple}× goal, key observations, thesis updates, risks on the radar, forward outlook",\n` +
     `  "tags": ["3–5 relevant ticker symbols or themes"]\n` +
     `}`;
 
@@ -150,9 +200,11 @@ export interface GeneratedRiskEntry {
 export async function generateRiskEntries(
   holdings: Array<{ symbol: string; name: string; sector: string; weight: number }>,
   apiKey?: string,
+  goal: GoalContext = DEFAULT_GOAL,
 ): Promise<GeneratedRiskEntry[]> {
   const systemPrompt =
-    'You are a portfolio risk analyst. Identify material risks and upcoming catalysts. ' +
+    `You are a portfolio risk analyst for an aggressive growth portfolio targeting ${goal.label}. ` +
+    'Identify material risks and upcoming catalysts. ' +
     'Respond with valid JSON only — no markdown, no explanation outside the JSON array.';
 
   const lines = holdings
@@ -160,7 +212,10 @@ export async function generateRiskEntries(
     .join('\n');
 
   const prompt =
-    `Identify 2–3 key risks and 2–3 key catalysts for this portfolio:\n${lines}\n\n` +
+    `Identify 2–3 key risks and 2–3 key catalysts for this portfolio (goal: ${goal.label}):\n${lines}\n\n` +
+    (goal.runwayNote ? `⚠️ ${goal.runwayNote}\n\n` : '') +
+    `Prioritise risks and catalysts that are most relevant to achieving the ${goal.multiple}× goal ` +
+    `within the remaining timeframe.\n\n` +
     `Return a JSON array:\n` +
     `[\n` +
     `  {\n` +
@@ -199,13 +254,14 @@ export async function generateTargetAllocations(
   }>,
   apiKey?: string,
   newsContext?: Record<string, string[]>,
+  goal: GoalContext = DEFAULT_GOAL,
 ): Promise<GeneratedTargetAllocation[]> {
   const systemPrompt =
-    'You are a portfolio manager building an aggressive growth portfolio targeting 10× returns by 2030. ' +
+    `You are a portfolio manager building an aggressive growth portfolio targeting ${goal.label}. ` +
     'The investor accepts high volatility and concentrated risk in exchange for asymmetric upside. ' +
     'Targets must sum to exactly 100. ' +
-    'Overweight high-conviction, high-upside positions even if risk is rated high. ' +
-    'Underweight or trim positions with thesis drift, low conviction, or limited upside to 10×. ' +
+    `Overweight high-conviction positions with a credible ${goal.multiple}× path even if risk is rated high. ` +
+    'Underweight or trim positions with thesis drift, low conviction, or limited upside. ' +
     'Respond with valid JSON only — no markdown, no explanation outside the JSON array.';
 
   const lines = holdings
@@ -220,19 +276,20 @@ export async function generateTargetAllocations(
   const newsBlock = formatNewsBlock(newsContext);
 
   const prompt =
-    `Set target weights for this aggressive growth portfolio (goal: 10× by 2030):\n${lines}\n\n` +
+    `Set target weights for this aggressive growth portfolio (goal: ${goal.label}):\n${lines}\n\n` +
     (newsBlock ? `${newsBlock}\n\n` : '') +
+    (goal.runwayNote ? `⚠️ ${goal.runwayNote}\n\n` : '') +
     `Rules:\n` +
     `- Targets must sum to 100.\n` +
-    `- Prioritise positions with the highest potential for 10× upside by 2030.\n` +
-    `- High conviction (4–5/5) = earn a large allocation (20%+) if the 10× case is credible.\n` +
+    `- Prioritise positions with the highest potential for ${goal.multiple}× upside by ${goal.year}.\n` +
+    `- High conviction (4–5/5) = earn a large allocation (20%+) if the ${goal.multiple}× case is credible.\n` +
     `- Thesis drift positions should be reduced or trimmed — they are no longer trusted.\n` +
     `- Risk level alone is NOT a reason to reduce weight; upside potential is the primary driver.\n` +
     `- Factor in recent news when assessing momentum and near-term risk to each position.\n` +
     `- Keep targets in clean 1% increments.\n\n` +
     `Return a JSON array (one entry per holding):\n` +
     `[\n` +
-    `  { "symbol": "RKLB", "targetWeight": 20, "rationale": "one sentence tying weight to 10× thesis" }\n` +
+    `  { "symbol": "RKLB", "targetWeight": 20, "rationale": "one sentence tying weight to ${goal.multiple}× thesis" }\n` +
     `]`;
 
   const text = await callClaude(prompt, systemPrompt, apiKey);
@@ -255,6 +312,7 @@ export interface RebalanceRow {
   pnlPct?: number;
   conviction?: number | null;
   thesisDrift?: boolean;
+  thesisBody?: string;
   riskLevel?: string;
   sector?: string;
 }
@@ -263,11 +321,12 @@ export async function generateRebalanceSuggestion(
   rows: RebalanceRow[],
   apiKey?: string,
   newsContext?: Record<string, string[]>,
+  goal: GoalContext = DEFAULT_GOAL,
 ): Promise<GeneratedRebalance> {
   const systemPrompt =
-    'You are a disciplined portfolio manager running an aggressive growth portfolio with a 10× by 2030 goal. ' +
+    `You are a disciplined portfolio manager running an aggressive growth portfolio with a ${goal.label} goal. ` +
     'Suggest specific rebalance trades that move the portfolio closer to its target weights and strengthen ' +
-    'the 10× thesis — prioritising the highest-upside positions. ' +
+    `the ${goal.multiple}× thesis — prioritising the highest-upside positions. ` +
     'Respond with valid JSON only — no markdown, no explanation outside the JSON object.';
 
   const table = rows
@@ -283,6 +342,7 @@ export async function generateRebalanceSuggestion(
       if (r.thesisDrift)        parts.push('THESIS DRIFT');
       if (r.riskLevel)          parts.push(`risk=${r.riskLevel}`);
       if (r.sector)             parts.push(`(${r.sector})`);
+      if (r.thesisBody)         parts.push(`\n  thesis: "${r.thesisBody.slice(0, 150)}${r.thesisBody.length > 150 ? '…' : ''}"`);
       return parts.join(' ');
     })
     .join('\n');
@@ -291,18 +351,19 @@ export async function generateRebalanceSuggestion(
   const newsBlock = formatNewsBlock(newsContext);
 
   const prompt =
-    `Portfolio rebalance analysis as of ${today} (goal: 10× by 2030):\n${table}\n\n` +
+    `Portfolio rebalance analysis as of ${today} (goal: ${goal.label}):\n${table}\n\n` +
     (newsBlock ? `${newsBlock}\n\n` : '') +
+    (goal.runwayNote ? `⚠️ ${goal.runwayNote}\n\n` : '') +
     `Suggest specific rebalance trades. Priorities in order:\n` +
-    `1. Trim positions that are above target — free up capital for underweights.\n` +
-    `2. Add to high-conviction positions that are below target — these are the 10× bets.\n` +
-    `3. Reduce or exit any thesis-drift positions — capital is better deployed elsewhere.\n` +
-    `4. Factor in recent news — a negative catalyst may warrant extra caution on a trim; a strong catalyst may justify adding sooner.\n` +
+    `1. Add to high-conviction positions below target whose thesis supports a credible ${goal.multiple}× path.\n` +
+    `2. Trim positions above target to free up capital — but do NOT trim below target for strong ${goal.multiple}× names.\n` +
+    `3. Reduce or exit thesis-drift positions — capital is better deployed in the core ${goal.multiple}× bets.\n` +
+    `4. Factor in recent news — a negative catalyst may warrant extra caution; a strong catalyst may justify adding sooner.\n` +
     `5. Consider tax efficiency for trims (higher unrealised P&L = larger tax event).\n\n` +
     `Return JSON:\n` +
     `{\n` +
     `  "action": "one-line summary of specific trades e.g. \\"Trim IREN (+4%→target), add RKLB (-3%→target)\\"",\n` +
-    `  "rationale": "2–3 sentences tying the trades to the 10× goal, current drift, and any relevant recent news"\n` +
+    `  "rationale": "2–3 sentences tying the trades to the ${goal.multiple}× goal, current drift, and any relevant recent news"\n` +
     `}`;
 
   const text = await callClaude(prompt, systemPrompt, apiKey);

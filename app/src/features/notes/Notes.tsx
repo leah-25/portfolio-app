@@ -14,7 +14,8 @@ import { useResearchNotesStore, type AnalysisNote } from '../../store/researchNo
 import { useNotesStore, type ManualNote } from '../../store/notesStore';
 import { useHoldingsStore } from '../../store/holdingsStore';
 import { useAIStore } from '../../store/aiStore';
-import { generateNote } from '../../lib/ai/generate';
+import { usePortfolioGoalStore } from '../../store/portfolioStore';
+import { generateNote, buildGoalContext } from '../../lib/ai/generate';
 
 const USE_SERVER_KEY = import.meta.env.VITE_USE_SERVER_KEY === 'true';
 
@@ -51,6 +52,7 @@ export default function Notes() {
   const { notes: manualNotes } = useNotesStore();
   const { holdings } = useHoldingsStore();
   const { anthropicKey } = useAIStore();
+  const { goalMultiple, goalYear } = usePortfolioGoalStore();
   const hasAI = USE_SERVER_KEY || !!anthropicKey;
 
   const typedNotes = manualNotes.filter((n) => n.type === (tab as 'weekly' | 'quarterly'));
@@ -77,6 +79,7 @@ export default function Notes() {
         holdings.map((h) => ({ symbol: h.symbol, weight: h.weight, thesisDrift: h.thesisDrift })),
         tab === 'ai' ? 'weekly' : tab,
         anthropicKey || undefined,
+        buildGoalContext(goalMultiple, goalYear),
       );
       setAiPrefill({
         type:   tab === 'ai' ? 'weekly' : tab,

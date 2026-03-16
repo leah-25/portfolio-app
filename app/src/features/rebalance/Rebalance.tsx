@@ -12,9 +12,11 @@ import { useRebalanceStore, type RebalanceEntry } from '../../store/rebalanceSto
 import { useHoldingsStore } from '../../store/holdingsStore';
 import { useAIStore } from '../../store/aiStore';
 import { useMarketStore } from '../../store/marketStore';
+import { usePortfolioGoalStore } from '../../store/portfolioStore';
 import {
   generateRebalanceSuggestion,
   generateTargetAllocations,
+  buildGoalContext,
   type RebalanceRow,
   type GeneratedTargetAllocation,
 } from '../../lib/ai/generate';
@@ -120,6 +122,7 @@ export default function Rebalance() {
   const { holdings, updateHolding }            = useHoldingsStore();
   const { anthropicKey }                       = useAIStore();
   const { apiKey: marketApiKey, provider }     = useMarketStore();
+  const { goalMultiple, goalYear }             = usePortfolioGoalStore();
   const hasAI = USE_SERVER_KEY || !!anthropicKey;
   const hasPolygonNews = provider === 'polygon' && !!marketApiKey;
 
@@ -151,6 +154,7 @@ export default function Rebalance() {
       pnlPct:      h.pnlPct,
       conviction:  h.conviction,
       thesisDrift: h.thesisDrift,
+      thesisBody:  h.thesisBody,
       riskLevel:   h.riskLevel,
       sector:      h.sector,
       hasPending:  pendingVal !== undefined,
@@ -167,6 +171,7 @@ export default function Rebalance() {
       delta:       r.delta!,
       pnlPct:      r.pnlPct,
       conviction:  r.conviction,
+      thesisBody:  r.thesisBody,
       thesisDrift: r.thesisDrift,
       riskLevel:   r.riskLevel,
       sector:      r.sector,
@@ -220,6 +225,7 @@ export default function Rebalance() {
         })),
         anthropicKey || undefined,
         newsContext,
+        buildGoalContext(goalMultiple, goalYear),
       );
       // Stage as pending (don't save yet)
       const map: Record<string, number | null> = {};
@@ -248,6 +254,7 @@ export default function Rebalance() {
         rowsForAction,
         anthropicKey || undefined,
         newsContext,
+        buildGoalContext(goalMultiple, goalYear),
       );
       setEditTarget(null);
       setFormPrefill({ action: result.action, rationale: result.rationale });
