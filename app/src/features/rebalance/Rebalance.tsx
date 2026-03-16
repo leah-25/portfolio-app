@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, ArrowLeftRight, Pencil, Trash2 } from 'lucide-react';
+import { Plus, ArrowLeftRight, Pencil, Trash2, Sparkles, Loader2 } from 'lucide-react';
 import PageHeader from '../../components/layout/PageHeader';
 import PageContainer, { PageGrid } from '../../components/layout/PageContainer';
 import Card, { CardHeader } from '../../components/ui/Card';
@@ -10,16 +10,22 @@ import EmptyState from '../../components/ui/EmptyState';
 import RebalanceLogForm from './RebalanceLogForm';
 import { useRebalanceStore, type RebalanceEntry } from '../../store/rebalanceStore';
 import { useHoldingsStore } from '../../store/holdingsStore';
+import { useAIStore } from '../../store/aiStore';
+import { generateRebalanceSuggestion } from '../../lib/ai/generate';
+
+const USE_SERVER_KEY = import.meta.env.VITE_USE_SERVER_KEY === 'true';
 
 export default function Rebalance() {
   const { entries, deleteEntry } = useRebalanceStore();
   const { holdings } = useHoldingsStore();
+  const { anthropicKey } = useAIStore();
+  const hasAI = USE_SERVER_KEY || !!anthropicKey;
 
-  const [formOpen, setFormOpen]     = useState(false);
-  const [editTarget, setEditTarget] = useState<RebalanceEntry | null>(null);
-
-  function openAdd() { setEditTarget(null); setFormOpen(true); }
-  function openEdit(e: RebalanceEntry) { setEditTarget(e); setFormOpen(true); }
+  const [formOpen, setFormOpen]       = useState(false);
+  const [editTarget, setEditTarget]   = useState<RebalanceEntry | null>(null);
+  const [formPrefill, setFormPrefill] = useState<{ action?: string; rationale?: string } | undefined>();
+  const [generating, setGenerating]   = useState(false);
+  const [genError, setGenError]       = useState<string | null>(null);
 
   // Derive target vs actual from holdings store
   const allocationRows = holdings
@@ -32,19 +38,57 @@ export default function Rebalance() {
     }))
     .sort((a, b) => b.target - a.target);
 
+  function openAdd() { setEditTarget(null); setFormPrefill(undefined); setFormOpen(true); }
+  function openEdit(e: RebalanceEntry) { setEditTarget(e); setFormPrefill(undefined); setFormOpen(true); }
+
+  async function handleAISuggest() {
+    if (allocationRows.length === 0) return;
+    setGenerating(true);
+    setGenError(null);
+    try {
+      const result = await generateRebalanceSuggestion(allocationRows, anthropicKey || undefined);
+      setEditTarget(null);
+      setFormPrefill({ action: result.action, rationale: result.rationale });
+      setFormOpen(true);
+    } catch (err) {
+      setGenError(err instanceof Error ? err.message : 'Generation failed');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
         title="Rebalance Log"
         description="Target allocation vs current weights and decision history"
         actions={
-          <Button variant="primary" size="sm" onClick={openAdd}>
-            <Plus size={14} />
-            Log decision
-          </Button>
+          <div className="flex items-center gap-2">
+            {hasAI && allocationRows.length > 0 && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleAISuggest}
+                disabled={generating}
+              >
+                {generating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                AI suggest
+              </Button>
+            )}
+            <Button variant="primary" size="sm" onClick={openAdd}>
+              <Plus size={14} />
+              Log decision
+            </Button>
+          </div>
         }
       />
       <PageContainer>
+        {genError && (
+          <div className="mb-4 p-3 rounded-lg bg-loss-subtle border border-loss-border text-xs text-loss-text">
+            {genError}
+          </div>
+        )}
+
         <PageGrid cols={2}>
           {/* Target vs Actual */}
           <Card padding="none">
@@ -131,6 +175,7 @@ export default function Rebalance() {
         open={formOpen}
         onClose={() => setFormOpen(false)}
         entry={editTarget}
+        prefill={formPrefill}
       />
     </>
   );

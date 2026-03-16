@@ -9,6 +9,7 @@ interface RebalanceLogFormProps {
   open: boolean;
   onClose: () => void;
   entry?: RebalanceEntry | null;
+  prefill?: { action?: string; rationale?: string };
 }
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -19,7 +20,7 @@ function entryToForm(e: RebalanceEntry) {
   return { date: e.date, action: e.action, rationale: e.rationale };
 }
 
-export default function RebalanceLogForm({ open, onClose, entry }: RebalanceLogFormProps) {
+export default function RebalanceLogForm({ open, onClose, entry, prefill }: RebalanceLogFormProps) {
   const { addEntry, updateEntry } = useRebalanceStore();
   const isEdit = entry != null;
 
@@ -28,7 +29,11 @@ export default function RebalanceLogForm({ open, onClose, entry }: RebalanceLogF
 
   useEffect(() => {
     if (open) {
-      setForm(entry ? entryToForm(entry) : { ...BLANK, date: new Date().toISOString().slice(0, 10) });
+      setForm(entry ? entryToForm(entry) : {
+        ...BLANK,
+        date: new Date().toISOString().slice(0, 10),
+        ...(prefill ?? {}),
+      });
       setErrors({});
     }
   }, [open, entry]);

@@ -9,8 +9,9 @@ import { useNotesStore, type ManualNote } from '../../store/notesStore';
 interface NoteFormProps {
   open: boolean;
   onClose: () => void;
-  note?: ManualNote | null;   // null/undefined = add mode
+  note?: ManualNote | null;        // null/undefined = add mode
   defaultType?: 'weekly' | 'quarterly';
+  prefill?: Partial<typeof BLANK>; // AI-generated pre-fill data
 }
 
 const BLANK = {
@@ -31,7 +32,7 @@ function noteToForm(n: ManualNote) {
   };
 }
 
-export default function NoteForm({ open, onClose, note, defaultType = 'weekly' }: NoteFormProps) {
+export default function NoteForm({ open, onClose, note, defaultType = 'weekly', prefill }: NoteFormProps) {
   const { addNote, updateNote } = useNotesStore();
   const isEdit = note != null;
 
@@ -40,7 +41,7 @@ export default function NoteForm({ open, onClose, note, defaultType = 'weekly' }
 
   useEffect(() => {
     if (open) {
-      setForm(note ? noteToForm(note) : { ...BLANK, type: defaultType });
+      setForm(note ? noteToForm(note) : { ...BLANK, type: defaultType, ...prefill });
       setErrors({});
     }
   }, [open, note, defaultType]);
