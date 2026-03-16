@@ -164,6 +164,55 @@ export async function generateRiskEntries(
   return parseJSON<GeneratedRiskEntry[]>(text);
 }
 
+// ── Target Allocation ─────────────────────────────────────────────────────────
+
+export interface GeneratedTargetAllocation {
+  symbol: string;
+  targetWeight: number;   // 0–100, all entries sum to ~100
+  rationale: string;      // one-sentence justification
+}
+
+export async function generateTargetAllocations(
+  holdings: Array<{
+    symbol: string;
+    name: string;
+    type: string;
+    sector: string;
+    weight: number;       // current actual weight
+    pnlPct: number;
+    conviction: number | null;
+    thesisDrift: boolean;
+    riskLevel: string;
+  }>,
+  apiKey?: string,
+): Promise<GeneratedTargetAllocation[]> {
+  const systemPrompt =
+    'You are a portfolio manager setting disciplined target allocations. ' +
+    'Targets must sum to exactly 100. Weight higher-conviction, lower-risk positions more. ' +
+    'Respond with valid JSON only — no markdown, no explanation outside the JSON array.';
+
+  const lines = holdings
+    .map(
+      (h) =>
+        `${h.symbol} (${h.name}): current ${h.weight.toFixed(1)}%, ` +
+        `conviction ${h.conviction ?? 'none'}/5, P&L ${h.pnlPct > 0 ? '+' : ''}${h.pnlPct.toFixed(1)}%, ` +
+        `risk=${h.riskLevel}${h.thesisDrift ? ', THESIS DRIFT' : ''}, ${h.type}, ${h.sector}`,
+    )
+    .join('\n');
+
+  const prompt =
+    `Set target weights for this portfolio:\n${lines}\n\n` +
+    `Rules: targets must sum to 100. Favour high-conviction, low-risk positions. ` +
+    `Reduce weight on thesis-drifted holdings. Keep targets in clean 5% increments where possible.\n\n` +
+    `Return a JSON array (one entry per holding):\n` +
+    `[\n` +
+    `  { "symbol": "NVDA", "targetWeight": 25, "rationale": "one sentence" }\n` +
+    `]`;
+
+  const text = await callClaude(prompt, systemPrompt, apiKey);
+  return parseJSON<GeneratedTargetAllocation[]>(text);
+}
+
 // ── Rebalance ─────────────────────────────────────────────────────────────────
 
 export interface GeneratedRebalance {
