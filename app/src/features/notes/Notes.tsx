@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, BookOpen, Sparkles } from 'lucide-react';
+import { Plus, BookOpen, Sparkles, Loader2 } from 'lucide-react';
 import PageHeader from '../../components/layout/PageHeader';
 import PageContainer from '../../components/layout/PageContainer';
 import NoteCard from '../../components/ui/NoteCard';
@@ -12,6 +12,11 @@ import NoteForm from './NoteForm';
 import NoteDetail from './NoteDetail';
 import { useResearchNotesStore, type AnalysisNote } from '../../store/researchNotesStore';
 import { useNotesStore, type ManualNote } from '../../store/notesStore';
+import { useHoldingsStore } from '../../store/holdingsStore';
+import { useAIStore } from '../../store/aiStore';
+import { generateNote } from '../../lib/ai/generate';
+
+const USE_SERVER_KEY = import.meta.env.VITE_USE_SERVER_KEY === 'true';
 
 const TABS = [
   { key: 'weekly',    label: 'Weekly' },
@@ -35,14 +40,20 @@ function noteExcerpt(aiResponse: string): string {
 export default function Notes() {
   const [tab, setTab] = useState<'weekly' | 'quarterly' | 'ai'>('weekly');
   const [search, setSearch] = useState('');
-  const [selectedAiNote, setSelectedAiNote]     = useState<AnalysisNote | null>(null);
+  const [selectedAiNote, setSelectedAiNote]         = useState<AnalysisNote | null>(null);
   const [selectedManualNote, setSelectedManualNote] = useState<ManualNote | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen]   = useState(false);
+  const [aiPrefill, setAiPrefill] = useState<Record<string, string> | undefined>(undefined);
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError]     = useState<string | null>(null);
 
   const { notes: aiNotes, deleteNote: deleteAiNote } = useResearchNotesStore();
   const { notes: manualNotes } = useNotesStore();
+  const { holdings } = useHoldingsStore();
+  const { anthropicKey } = useAIStore();
+  const hasAI = USE_SERVER_KEY || !!anthropicKey;
 
-  const typedNotes = manualNotes.filter((n) => n.type === tab as 'weekly' | 'quarterly');
+  const typedNotes = manualNotes.filter((n) => n.type === (tab as 'weekly' | 'quarterly'));
 
   const filteredManual = search
     ? typedNotes.filter((n) =>
@@ -58,6 +69,35 @@ export default function Notes() {
       )
     : aiNotes;
 
+  async function handleGenerateNote() {
+    setGenerating(true);
+    setGenError(null);
+    try {
+      const result = await generateNote(
+        holdings.map((h) => ({ symbol: h.symbol, weight: h.weight, thesisDrift: h.thesisDrift })),
+        tab === 'ai' ? 'weekly' : tab,
+        anthropicKey || undefined,
+      );
+      setAiPrefill({
+        type:   tab === 'ai' ? 'weekly' : tab,
+        period: result.period,
+        title:  result.title,
+        body:   result.body,
+        tags:   result.tags.join(', '),
+      });
+      setFormOpen(true);
+    } catch (err) {
+      setGenError(err instanceof Error ? err.message : 'Generation failed');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  function openBlankForm() {
+    setAiPrefill(undefined);
+    setFormOpen(true);
+  }
+
   return (
     <>
       <PageHeader
@@ -65,14 +105,33 @@ export default function Notes() {
         description="Weekly check-ins, quarterly reviews, and AI analysis snapshots"
         actions={
           tab !== 'ai' ? (
-            <Button variant="primary" size="sm" onClick={() => setFormOpen(true)}>
-              <Plus size={14} />
-              New note
-            </Button>
+            <div className="flex items-center gap-2">
+              {hasAI && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleGenerateNote}
+                  disabled={generating || holdings.length === 0}
+                >
+                  {generating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                  Generate with AI
+                </Button>
+              )}
+              <Button variant="primary" size="sm" onClick={openBlankForm}>
+                <Plus size={14} />
+                New note
+              </Button>
+            </div>
           ) : undefined
         }
       />
       <PageContainer>
+        {genError && (
+          <div className="mb-4 p-3 rounded-lg bg-loss-subtle border border-loss-border text-xs text-loss-text">
+            {genError}
+          </div>
+        )}
+
         {/* Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <Tabs tabs={TABS} active={tab} onChange={(k) => setTab(k as typeof tab)} />
@@ -94,10 +153,18 @@ export default function Notes() {
               title={`No ${tab} notes yet`}
               description="Start recording your research to track how your thesis evolves over time."
               action={
-                <Button variant="primary" size="sm" onClick={() => setFormOpen(true)}>
-                  <Plus size={14} />
-                  Add first note
-                </Button>
+                <div className="flex items-center gap-2">
+                  {hasAI && (
+                    <Button variant="secondary" size="sm" onClick={handleGenerateNote} disabled={generating}>
+                      {generating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                      Generate with AI
+                    </Button>
+                  )}
+                  <Button variant="primary" size="sm" onClick={openBlankForm}>
+                    <Plus size={14} />
+                    Write manually
+                  </Button>
+                </div>
               }
             />
           ) : (
@@ -162,11 +229,12 @@ export default function Notes() {
         onClose={() => setSelectedManualNote(null)}
       />
 
-      {/* Add note form */}
+      {/* Add / edit note form */}
       <NoteForm
         open={formOpen}
-        onClose={() => setFormOpen(false)}
+        onClose={() => { setFormOpen(false); setAiPrefill(undefined); }}
         defaultType={tab === 'ai' ? 'weekly' : tab}
+        prefill={aiPrefill}
       />
     </>
   );
