@@ -108,12 +108,12 @@ async function analyzeDirectly(opts: AnalysisOptions): Promise<void> {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
-// When VITE_USE_SERVER_KEY=true the key lives in .env.local and is never
-// shipped to the browser. The frontend calls /api/analyze (Vite middleware
-// in dev, Node.js server in production) which proxies to Anthropic.
+// Uses the server-side proxy (/api/analyze) by default.
+// Falls back to the direct browser SDK path only when a user-supplied apiKey
+// is explicitly provided (e.g. local dev without a server key).
 export async function analyzePortfolio(opts: AnalysisOptions): Promise<void> {
-  if (import.meta.env.VITE_USE_SERVER_KEY === 'true') {
-    return analyzeViaProxy(opts);
+  if (opts.apiKey) {
+    return analyzeDirectly(opts);
   }
-  return analyzeDirectly(opts);
+  return analyzeViaProxy(opts);
 }
