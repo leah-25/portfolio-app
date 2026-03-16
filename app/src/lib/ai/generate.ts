@@ -39,8 +39,6 @@ export function buildGoalContext(multiple: number, year: number): GoalContext {
   return { multiple, year, yearsRemaining, label, runwayNote };
 }
 
-const DEFAULT_GOAL = buildGoalContext(10, 2030);
-
 // ── News context ──────────────────────────────────────────────────────────────
 
 // Format a news context map (symbol → headline strings) into a prompt block.
@@ -108,7 +106,7 @@ export interface GeneratedThesis {
 export async function generateThesis(
   holding: { symbol: string; name: string; type: string; sector: string; weight: number },
   apiKey?: string,
-  goal: GoalContext = DEFAULT_GOAL,
+  goal: GoalContext = buildGoalContext(10, 2030),
 ): Promise<GeneratedThesis> {
   const systemPrompt =
     `You are a professional investment analyst building an aggressive growth portfolio with a ` +
@@ -148,7 +146,7 @@ export async function generateNote(
   holdings: Array<{ symbol: string; weight: number; thesisDrift: boolean }>,
   type: 'weekly' | 'quarterly',
   apiKey?: string,
-  goal: GoalContext = DEFAULT_GOAL,
+  goal: GoalContext = buildGoalContext(10, 2030),
 ): Promise<GeneratedNote> {
   const systemPrompt =
     `You are a portfolio manager writing investment research notes for an aggressive growth portfolio ` +
@@ -200,7 +198,7 @@ export interface GeneratedRiskEntry {
 export async function generateRiskEntries(
   holdings: Array<{ symbol: string; name: string; sector: string; weight: number }>,
   apiKey?: string,
-  goal: GoalContext = DEFAULT_GOAL,
+  goal: GoalContext = buildGoalContext(10, 2030),
 ): Promise<GeneratedRiskEntry[]> {
   const systemPrompt =
     `You are a portfolio risk analyst for an aggressive growth portfolio targeting ${goal.label}. ` +
@@ -254,7 +252,7 @@ export async function generateTargetAllocations(
   }>,
   apiKey?: string,
   newsContext?: Record<string, string[]>,
-  goal: GoalContext = DEFAULT_GOAL,
+  goal: GoalContext = buildGoalContext(10, 2030),
 ): Promise<GeneratedTargetAllocation[]> {
   const systemPrompt =
     `You are a portfolio manager building an aggressive growth portfolio targeting ${goal.label}. ` +
@@ -321,7 +319,7 @@ export async function generateRebalanceSuggestion(
   rows: RebalanceRow[],
   apiKey?: string,
   newsContext?: Record<string, string[]>,
-  goal: GoalContext = DEFAULT_GOAL,
+  goal: GoalContext = buildGoalContext(10, 2030),
 ): Promise<GeneratedRebalance> {
   const systemPrompt =
     `You are a disciplined portfolio manager running an aggressive growth portfolio with a ${goal.label} goal. ` +

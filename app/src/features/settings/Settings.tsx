@@ -44,8 +44,11 @@ export default function Settings() {
   function handleGoalSave() {
     const m = parseFloat(multipleDraft);
     const y = parseInt(yearDraft, 10);
-    if (!isNaN(m) && m > 0) setGoalMultiple(m);
-    if (!isNaN(y) && y > 2020) setGoalYear(y);
+    const validM = !isNaN(m) && m > 0;
+    const validY = !isNaN(y) && y > 2020;
+    if (!validM || !validY) return;   // ignore save on invalid input
+    setGoalMultiple(m);
+    setGoalYear(y);
     setGoalSaved(true);
     setTimeout(() => setGoalSaved(false), 2500);
   }
