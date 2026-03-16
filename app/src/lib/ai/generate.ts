@@ -164,6 +164,55 @@ export async function generateRiskEntries(
   return parseJSON<GeneratedRiskEntry[]>(text);
 }
 
+// ── Target Allocation ─────────────────────────────────────────────────────────
+
+export interface GeneratedTargetAllocation {
+  symbol: string;
+  targetWeight: number;   // 0–100, all entries sum to ~100
+  rationale: string;      // one-sentence justification
+}
+
+export async function generateTargetAllocations(
+  holdings: Array<{
+    symbol: string;
+    name: string;
+    type: string;
+    sector: string;
+    weight: number;       // current actual weight
+    pnlPct: number;
+    conviction: number | null;
+    thesisDrift: boolean;
+    riskLevel: string;
+  }>,
+  apiKey?: string,
+): Promise<GeneratedTargetAllocation[]> {
+  const systemPrompt =
+    'You are a portfolio manager setting disciplined target allocations. ' +
+    'Targets must sum to exactly 100. Weight higher-conviction, lower-risk positions more. ' +
+    'Respond with valid JSON only — no markdown, no explanation outside the JSON array.';
+
+  const lines = holdings
+    .map(
+      (h) =>
+        `${h.symbol} (${h.name}): current ${h.weight.toFixed(1)}%, ` +
+        `conviction ${h.conviction ?? 'none'}/5, P&L ${h.pnlPct > 0 ? '+' : ''}${h.pnlPct.toFixed(1)}%, ` +
+        `risk=${h.riskLevel}${h.thesisDrift ? ', THESIS DRIFT' : ''}, ${h.type}, ${h.sector}`,
+    )
+    .join('\n');
+
+  const prompt =
+    `Set target weights for this portfolio:\n${lines}\n\n` +
+    `Rules: targets must sum to 100. Favour high-conviction, low-risk positions. ` +
+    `Reduce weight on thesis-drifted holdings. Keep targets in clean 5% increments where possible.\n\n` +
+    `Return a JSON array (one entry per holding):\n` +
+    `[\n` +
+    `  { "symbol": "NVDA", "targetWeight": 25, "rationale": "one sentence" }\n` +
+    `]`;
+
+  const text = await callClaude(prompt, systemPrompt, apiKey);
+  return parseJSON<GeneratedTargetAllocation[]>(text);
+}
+
 // ── Rebalance ─────────────────────────────────────────────────────────────────
 
 export interface GeneratedRebalance {
@@ -171,26 +220,51 @@ export interface GeneratedRebalance {
   rationale: string;
 }
 
+export interface RebalanceRow {
+  symbol: string;
+  target: number;
+  actual: number;
+  delta: number;
+  // enriched context
+  pnlPct?: number;
+  conviction?: number | null;
+  thesisDrift?: boolean;
+  riskLevel?: string;
+  sector?: string;
+}
+
 export async function generateRebalanceSuggestion(
-  rows: Array<{ symbol: string; target: number; actual: number; delta: number }>,
+  rows: RebalanceRow[],
   apiKey?: string,
 ): Promise<GeneratedRebalance> {
   const systemPrompt =
-    'You are a disciplined portfolio manager. Suggest rebalance trades to reduce drift. ' +
+    'You are a disciplined portfolio manager. Suggest specific rebalance trades taking into account ' +
+    'allocation drift, conviction, thesis integrity, unrealised gains/losses, and risk level. ' +
     'Respond with valid JSON only — no markdown, no explanation outside the JSON object.';
 
   const table = rows
-    .map(
-      (r) =>
-        `${r.symbol}: target ${r.target}%, actual ${r.actual.toFixed(1)}%, drift ${r.delta > 0 ? '+' : ''}${r.delta.toFixed(1)}%`,
-    )
+    .map((r) => {
+      const parts = [
+        `${r.symbol}:`,
+        `target ${r.target}%,`,
+        `actual ${r.actual.toFixed(1)}%,`,
+        `drift ${r.delta > 0 ? '+' : ''}${r.delta.toFixed(1)}%`,
+      ];
+      if (r.pnlPct != null)   parts.push(`P&L ${r.pnlPct > 0 ? '+' : ''}${r.pnlPct.toFixed(1)}%`);
+      if (r.conviction != null) parts.push(`conviction ${r.conviction}/5`);
+      if (r.thesisDrift)      parts.push('THESIS DRIFT');
+      if (r.riskLevel)        parts.push(`risk=${r.riskLevel}`);
+      if (r.sector)           parts.push(`(${r.sector})`);
+      return parts.join(' ');
+    })
     .join('\n');
 
   const today = new Date().toISOString().slice(0, 10);
 
   const prompt =
-    `Portfolio allocation drift as of ${today}:\n${table}\n\n` +
-    `Suggest specific rebalance trades to reduce the largest drifts.\n\n` +
+    `Portfolio analysis as of ${today}:\n${table}\n\n` +
+    `Suggest specific rebalance trades. Prioritise reducing drift on high-conviction holdings, ` +
+    `trimming positions with thesis drift, and consider tax efficiency (higher P&L = bigger tax hit on trim).\n\n` +
     `Return JSON:\n` +
     `{\n` +
     `  "action": "one-line summary of trades e.g. \\"Trimmed NVDA (+3%→0%), added MSFT (-3%→0%)\\"",\n` +
