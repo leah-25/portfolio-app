@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
-import Textarea from '../../components/ui/Textarea';
 import Button from '../../components/ui/Button';
 import { useHoldingsStore } from '../../store/holdingsStore';
 import type { HoldingRecord, NewHoldingInput } from '../../store/holdingsStore';
@@ -268,17 +267,10 @@ export default function HoldingForm({ holding, open, onClose }: HoldingFormProps
             </div>
           </section>
 
-          {/* Thesis */}
-          <section className="space-y-3">
-            <p className="text-2xs font-semibold uppercase tracking-widest text-text-muted">Thesis</p>
-            <Textarea
-              label="Investment thesis"
-              placeholder="Why do you hold this position? What are the key catalysts and risks?"
-              value={form.thesisBody}
-              onChange={e => set('thesisBody', e.target.value)}
-              rows={4}
-            />
-            {isEdit && (
+          {/* Thesis drift flag (edit only) */}
+          {isEdit && (
+            <section className="space-y-3">
+              <p className="text-2xs font-semibold uppercase tracking-widest text-text-muted">Thesis</p>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -288,8 +280,8 @@ export default function HoldingForm({ holding, open, onClose }: HoldingFormProps
                 />
                 <span className="text-xs text-text-secondary">Mark thesis as drifted (needs review)</span>
               </label>
-            )}
-          </section>
+            </section>
+          )}
         </form>
 
         {/* Footer */}
