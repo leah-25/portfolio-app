@@ -334,10 +334,10 @@ export default function Dashboard() {
               negative={unrealisedPnl < 0}
             />
             <KpiCard
-              label={`${goalMultiple}× Progress`}
+              label="Goal Progress"
               value={`${(progress10x * 100).toFixed(1)}%`}
               progress={progress10x}
-              sub={`${formatCompact(totalValue, 'USD')} of ${formatCompact(targetValue, 'USD')} · ~${(requiredCagr * 100).toFixed(0)}% CAGR req.`}
+              sub={`${formatCompact(totalValue, 'USD')} of ${formatCompact(targetValue, 'USD')} ${goalMultiple}× target · ~${(requiredCagr * 100).toFixed(0)}% annual return needed by ${goalYear}`}
             />
           </div>
 
