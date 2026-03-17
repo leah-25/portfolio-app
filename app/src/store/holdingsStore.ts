@@ -97,7 +97,7 @@ export const useHoldingsStore = create<HoldingsState>()(
           const costBasis  = totalQty > 0 ? totalCost / totalQty : h.costBasis;
           const currentValue = totalQty * costBasis;
           const pnl        = currentValue - totalCost;
-          return { ...h, lots: newLots, quantity: totalQty, costBasis, currentValue, pnl, pnlPct: totalCost > 0 ? (pnl / totalCost) * 100 : 0 };
+          return { ...h, lots: newLots, quantity: totalQty, costBasis, currentValue, pnl, pnlPct: totalCost > 0 ? pnl / totalCost : 0 };
         });
         return { holdings: recomputeWeights(updated) };
       }),
