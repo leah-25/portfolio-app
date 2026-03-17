@@ -328,13 +328,22 @@ export default function StockDetail() {
 
             {/* Current thesis */}
             <Section title="Current Thesis" icon={BookOpen}>
-              <div className="flex items-center justify-between mb-3">
-                <ConvictionPips value={data.conviction} showLabel />
-                <span className="text-2xs text-text-muted">
-                  Updated {formatDate(data.thesisUpdatedAt)}
-                </span>
-              </div>
-              <p className="text-sm text-text-secondary leading-relaxed">{data.thesisBody}</p>
+              {data.thesisBody ? (
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <ConvictionPips value={data.conviction} showLabel />
+                    <span className="text-2xs text-text-muted">
+                      Updated {formatDate(data.thesisUpdatedAt)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-text-secondary leading-relaxed">{data.thesisBody}</p>
+                </>
+              ) : (
+                <p className="text-sm text-text-muted py-2">
+                  No thesis yet — generate one from the{' '}
+                  <a href="/thesis" className="text-accent hover:underline">Thesis tab</a>.
+                </p>
+              )}
             </Section>
           </PageGrid>
 

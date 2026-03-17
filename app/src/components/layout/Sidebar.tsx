@@ -57,7 +57,6 @@ export default function Sidebar({ collapsed, onToggle, onClose }: SidebarProps) 
             <div className="text-sm font-semibold text-text-primary leading-none tracking-tight">
               10x Portfolio
             </div>
-            <div className="text-2xs text-text-muted mt-0.5">2030 Target</div>
           </div>
         )}
         {/* Mobile close button (only on mobile) */}
