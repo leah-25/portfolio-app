@@ -269,16 +269,7 @@ export default function Dashboard() {
       };
     });
 
-    // Group holdings < 2% into "Other"
-    const MIN_PCT  = 2;
-    const shown    = named.filter((s) => s.pct >= MIN_PCT);
-    const hidden   = named.filter((s) => s.pct < MIN_PCT);
-    const otherPct = hidden.reduce((s, h) => s + h.pct, 0);
-
-    return [
-      ...shown.map(({ _value: _, ...s }) => s),
-      ...(hidden.length > 0 ? [{ symbol: 'Other', name: `Other (${hidden.length})`, pct: otherPct, color: '#3f3f46' }] : []),
-    ];
+    return named.map(({ _value: _, ...s }) => s);
   }, [withWeights, totalValue]);
 
   // ── Derived counts for Quick Nav ─────────────────────────────────────────
