@@ -31,9 +31,9 @@ export default function Modal({ open, onClose, title, children }: ModalProps) {
       />
 
       {/* Panel */}
-      <div className="relative w-full max-w-md rounded-drawer bg-surface-overlay border border-surface-border shadow-2xl animate-fade-in">
+      <div className="relative w-full max-w-md rounded-drawer bg-surface-overlay border border-surface-border shadow-2xl animate-fade-in flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-surface-border px-5 py-4">
+        <div className="flex items-center justify-between border-b border-surface-border px-5 py-4 flex-shrink-0">
           <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
           <button
             onClick={onClose}
@@ -45,7 +45,7 @@ export default function Modal({ open, onClose, title, children }: ModalProps) {
         </div>
 
         {/* Body */}
-        <div className="p-5">{children}</div>
+        <div className="p-5 overflow-y-auto">{children}</div>
       </div>
     </div>
   );
