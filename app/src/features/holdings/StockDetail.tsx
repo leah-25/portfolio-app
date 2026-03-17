@@ -280,7 +280,7 @@ export default function StockDetail() {
   const currentValue = quote ? data.quantity * quote.price : data.currentValue;
   const totalCost    = data.quantity * data.costBasis;
   const pnl          = currentValue - totalCost;
-  const pnlPct       = totalCost > 0 ? (pnl / totalCost) * 100 : 0;
+  const pnlPct       = totalCost > 0 ? pnl / totalCost : 0;
   const gain         = pnl >= 0;
 
   async function handleAnalyze(forceRefresh = false) {
