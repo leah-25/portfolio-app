@@ -16,83 +16,12 @@ import NoteCard from '../../components/ui/NoteCard';
 import Button from '../../components/ui/Button';
 import { useHoldingsStore } from '../../store/holdingsStore';
 import { useMarketStore } from '../../store/marketStore';
+import { useNotesStore } from '../../store/notesStore';
+import { useRiskStore } from '../../store/riskStore';
+import { useRebalanceStore } from '../../store/rebalanceStore';
+import { usePortfolioGoalStore } from '../../store/portfolioStore';
 import { formatCompact, formatPct, formatDate } from '../../lib/formatters';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Static editorial mock content — no store exists yet for these
-// ─────────────────────────────────────────────────────────────────────────────
-
-const TARGET_YEAR = 2030;
-
-interface NoteItem {
-  id:        string;
-  type:      'weekly' | 'quarterly';
-  period:    string;
-  title:     string;
-  excerpt:   string;
-  tags:      string[];
-  updatedAt: string;
-}
-
-const RECENT_NOTES: NoteItem[] = [
-  {
-    id: 'w11',
-    type: 'weekly',
-    period: 'Week 11 · 2025',
-    title: 'NVDA earnings preview — data center demand holding strong',
-    excerpt: 'Ahead of Q1 earnings, channel checks suggest hyperscaler orders remain robust. Blackwell ramp is on track. Maintaining full position with high conviction.',
-    tags: ['NVDA', 'AI', 'semiconductors'],
-    updatedAt: '2025-03-10T14:22:00Z',
-  },
-  {
-    id: 'q1',
-    type: 'quarterly',
-    period: 'Q1 2025',
-    title: 'Q1 review — thesis drift, rebalance decisions, CAGR pacing',
-    excerpt: 'NVDA drifted +3% above target weight. Trimmed and redeployed to AMZN. All core theses intact. Portfolio tracking at 15.5% of 10× goal.',
-    tags: ['rebalance', 'NVDA', 'AMZN', 'quarterly'],
-    updatedAt: '2025-03-31T12:00:00Z',
-  },
-];
-
-interface RiskItem {
-  id:            string;
-  kind:          'risk' | 'catalyst';
-  holding:       string | null;
-  title:         string;
-  status:        'open' | 'monitoring' | 'resolved';
-  expectedDate?: string;
-}
-
-const OPEN_RISKS: RiskItem[] = [
-  {
-    id: '1', kind: 'risk', holding: 'NVDA',
-    title: 'Export controls restricting H100/H200 sales to China',
-    status: 'monitoring',
-  },
-  {
-    id: '2', kind: 'risk', holding: 'TSLA',
-    title: 'BEV market share erosion — BYD and legacy OEMs accelerating',
-    status: 'open',
-  },
-  {
-    id: '3', kind: 'catalyst', holding: 'NVDA',
-    title: 'Blackwell GPU full production ramp',
-    status: 'open', expectedDate: 'Q2 2025',
-  },
-  {
-    id: '4', kind: 'catalyst', holding: 'BTC',
-    title: 'Post-halvening supply shock tailwind',
-    status: 'monitoring', expectedDate: 'Apr–Oct 2024',
-  },
-];
-
-const LAST_REBALANCE = {
-  date: '2025-03-15T00:00:00Z',
-  action: 'Trimmed NVDA (+3.0% → target), funded AMZN (−2.0% → target)',
-  rationale:
-    'NVDA drifted above target following the January rally. Rebalanced to fund underweight AMZN position. No thesis changes — purely a weight correction.',
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Color palette for allocation donut
@@ -203,6 +132,15 @@ function DonutTooltip({ active, payload }: { active?: boolean; payload?: { paylo
   );
 }
 
+interface RiskItem {
+  id:            string;
+  kind:          'risk' | 'catalyst';
+  holding:       string | null;
+  title:         string;
+  status:        'open' | 'monitoring' | 'resolved';
+  expectedDate?: string;
+}
+
 function RiskRow({ item }: { item: RiskItem }) {
   const statusVariant = { open: 'warn', monitoring: 'default', resolved: 'gain' } as const;
   const KindIcon = item.kind === 'catalyst' ? Zap : AlertCircle;
@@ -252,6 +190,10 @@ function QuickNavTile({ to, Icon, label, meta }: { to: string; Icon: LucideIcon;
 export default function Dashboard() {
   const { holdings } = useHoldingsStore();
   const { quotes, loading, lastUpdated, refreshInterval, refresh } = useMarketStore();
+  const { notes }    = useNotesStore();
+  const { entries: riskEntries }      = useRiskStore();
+  const { entries: rebalanceEntries } = useRebalanceStore();
+  const { goalMultiple, goalYear }    = usePortfolioGoalStore();
 
   // ── Market data refresh ──────────────────────────────────────────────────
   const allSymbols = useMemo(() => holdings.map((h) => h.symbol), [holdings]);
@@ -293,13 +235,13 @@ export default function Dashboard() {
     () => holdings.reduce((s, h) => s + h.quantity * h.costBasis, 0),
     [holdings],
   );
-  const unrealisedPnl = totalValue - totalCost;
-  const pnlPct        = totalCost > 0 ? unrealisedPnl / totalCost : 0;
-  const target10x     = totalCost * 10;
-  const progress10x   = target10x > 0 ? totalValue / target10x : 0;
-  const yearsLeft     = TARGET_YEAR - new Date().getFullYear();
-  const requiredCagr  = progress10x > 0 && yearsLeft > 0 && totalValue > 0
-    ? Math.pow(target10x / totalValue, 1 / yearsLeft) - 1
+  const unrealisedPnl  = totalValue - totalCost;
+  const pnlPct         = totalCost > 0 ? unrealisedPnl / totalCost : 0;
+  const targetValue    = totalCost * goalMultiple;
+  const progress10x    = targetValue > 0 ? totalValue / targetValue : 0;
+  const yearsLeft      = goalYear - new Date().getFullYear();
+  const requiredCagr   = progress10x > 0 && yearsLeft > 0 && totalValue > 0
+    ? Math.pow(targetValue / totalValue, 1 / yearsLeft) - 1
     : 0;
 
   // ── Top holdings (up to 5 by value) ─────────────────────────────────────
@@ -327,27 +269,21 @@ export default function Dashboard() {
       };
     });
 
-    // Group holdings < 2% into "Other"
-    const MIN_PCT  = 2;
-    const shown    = named.filter((s) => s.pct >= MIN_PCT);
-    const hidden   = named.filter((s) => s.pct < MIN_PCT);
-    const otherPct = hidden.reduce((s, h) => s + h.pct, 0);
-
-    return [
-      ...shown.map(({ _value: _, ...s }) => s),
-      ...(hidden.length > 0 ? [{ symbol: 'Other', name: `Other (${hidden.length})`, pct: otherPct, color: '#3f3f46' }] : []),
-    ];
+    return named.map(({ _value: _, ...s }) => s);
   }, [withWeights, totalValue]);
 
   // ── Derived counts for Quick Nav ─────────────────────────────────────────
-  const driftCount = holdings.filter((h) => h.thesisDrift).length;
+  const driftCount      = holdings.filter((h) => h.thesisDrift).length;
+  const openRiskCount   = riskEntries.filter((r) => r.status !== 'resolved').length;
+  const lastRebalance   = rebalanceEntries[0] ?? null;
+  const rebalanceMeta   = lastRebalance ? `Last: ${formatDate(lastRebalance.date)}` : 'No entries yet';
 
   const quickNav: { to: string; Icon: LucideIcon; label: string; meta: string }[] = [
     { to: '/holdings',  Icon: Layers,        label: 'Holdings',  meta: `${holdings.length} position${holdings.length !== 1 ? 's' : ''}` },
     { to: '/thesis',    Icon: FileText,       label: 'Thesis',    meta: driftCount > 0 ? `${driftCount} drift alert${driftCount !== 1 ? 's' : ''}` : 'All current' },
-    { to: '/notes',     Icon: BookOpen,       label: 'Notes',     meta: '14 entries' },
-    { to: '/rebalance', Icon: ArrowLeftRight, label: 'Rebalance', meta: 'Last: Mar 15' },
-    { to: '/risk',      Icon: ShieldAlert,    label: 'Risk',      meta: `${OPEN_RISKS.filter(r => r.status !== 'resolved').length} open items` },
+    { to: '/notes',     Icon: BookOpen,       label: 'Notes',     meta: `${notes.length} entr${notes.length !== 1 ? 'ies' : 'y'}` },
+    { to: '/rebalance', Icon: ArrowLeftRight, label: 'Rebalance', meta: rebalanceMeta },
+    { to: '/risk',      Icon: ShieldAlert,    label: 'Risk',      meta: openRiskCount > 0 ? `${openRiskCount} open item${openRiskCount !== 1 ? 's' : ''}` : 'No open items' },
     { to: '/settings',  Icon: Settings,       label: 'Settings',  meta: 'Configure' },
   ];
 
@@ -361,7 +297,7 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader
-        eyebrow={`${TARGET_YEAR} · 10× Target`}
+        eyebrow={`${goalYear} · ${goalMultiple}× Target`}
         title="Portfolio Overview"
         description={description}
         actions={
@@ -398,10 +334,10 @@ export default function Dashboard() {
               negative={unrealisedPnl < 0}
             />
             <KpiCard
-              label="10× Progress"
+              label={`${goalMultiple}× Progress`}
               value={`${(progress10x * 100).toFixed(1)}%`}
               progress={progress10x}
-              sub={`${formatCompact(totalValue, 'USD')} of ${formatCompact(target10x, 'USD')} · ~${(requiredCagr * 100).toFixed(0)}% CAGR req.`}
+              sub={`${formatCompact(totalValue, 'USD')} of ${formatCompact(targetValue, 'USD')} · ~${(requiredCagr * 100).toFixed(0)}% CAGR req.`}
             />
           </div>
 
@@ -564,13 +500,15 @@ export default function Dashboard() {
                 />
               </div>
               <div className="px-5 pb-5 space-y-3">
-                {RECENT_NOTES.map((note) => (
+                {notes.length === 0 ? (
+                  <p className="text-xs text-text-muted py-4 text-center">No notes yet.</p>
+                ) : notes.slice(0, 2).map((note) => (
                   <NoteCard
                     key={note.id}
                     type={note.type}
                     period={note.period}
                     title={note.title}
-                    excerpt={note.excerpt}
+                    excerpt={note.body.slice(0, 160)}
                     tags={note.tags}
                     updatedAt={note.updatedAt}
                     onClick={() => {}}
@@ -589,20 +527,24 @@ export default function Dashboard() {
                 />
               </div>
               <div className="px-5 pb-3">
-                {OPEN_RISKS.map((item) => (
+                {riskEntries.length === 0 ? (
+                  <p className="text-xs text-text-muted py-4 text-center">No entries yet.</p>
+                ) : riskEntries.filter(r => r.status !== 'resolved').slice(0, 4).map((item) => (
                   <RiskRow key={item.id} item={item} />
                 ))}
               </div>
-              <div className="px-5 pb-4 pt-1 flex items-center gap-4 text-2xs text-text-muted">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-warn inline-block" />
-                  {OPEN_RISKS.filter(r => r.kind === 'risk' && r.status !== 'resolved').length} open risks
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-accent inline-block" />
-                  {OPEN_RISKS.filter(r => r.kind === 'catalyst').length} catalysts tracked
-                </span>
-              </div>
+              {riskEntries.length > 0 && (
+                <div className="px-5 pb-4 pt-1 flex items-center gap-4 text-2xs text-text-muted">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-warn inline-block" />
+                    {riskEntries.filter(r => r.kind === 'risk' && r.status !== 'resolved').length} open risks
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent inline-block" />
+                    {riskEntries.filter(r => r.kind === 'catalyst').length} catalysts tracked
+                  </span>
+                </div>
+              )}
             </Card>
           </div>
 
@@ -614,23 +556,29 @@ export default function Dashboard() {
             <Card>
               <SectionHead
                 title="Last Rebalance Decision"
-                sub={formatDate(LAST_REBALANCE.date)}
+                sub={lastRebalance ? formatDate(lastRebalance.date) : undefined}
                 to="/rebalance"
                 linkLabel="Full log"
               />
-              <div className="mb-3 flex items-start gap-2">
-                <div className="mt-0.5 flex-shrink-0 h-5 w-5 rounded bg-accent-subtle flex items-center justify-center">
-                  <Target size={11} className="text-accent" strokeWidth={2.5} />
-                </div>
-                <p className="text-sm font-medium text-text-primary leading-snug">
-                  {LAST_REBALANCE.action}
-                </p>
-              </div>
-              <div className="rounded-md bg-surface-overlay border border-surface-border px-3.5 py-3">
-                <p className="text-xs text-text-muted leading-relaxed">
-                  {LAST_REBALANCE.rationale}
-                </p>
-              </div>
+              {lastRebalance ? (
+                <>
+                  <div className="mb-3 flex items-start gap-2">
+                    <div className="mt-0.5 flex-shrink-0 h-5 w-5 rounded bg-accent-subtle flex items-center justify-center">
+                      <Target size={11} className="text-accent" strokeWidth={2.5} />
+                    </div>
+                    <p className="text-sm font-medium text-text-primary leading-snug">
+                      {lastRebalance.action}
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-surface-overlay border border-surface-border px-3.5 py-3">
+                    <p className="text-xs text-text-muted leading-relaxed">
+                      {lastRebalance.rationale}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-text-muted py-4 text-center">No rebalance entries yet.</p>
+              )}
             </Card>
 
             <div>

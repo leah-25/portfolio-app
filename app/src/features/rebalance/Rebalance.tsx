@@ -227,10 +227,11 @@ export default function Rebalance() {
         newsContext,
         buildGoalContext(goalMultiple, goalYear),
       );
-      // Stage as pending (don't save yet)
-      const map: Record<string, number | null> = {};
-      results.forEach((r) => { map[r.symbol] = r.targetWeight; });
-      setPendingTargets(map);
+      // Persist AI targets immediately so they survive navigation
+      results.forEach((r) => {
+        const h = holdings.find((h) => h.symbol === r.symbol);
+        if (h) updateHolding(h.id, { targetWeight: r.targetWeight });
+      });
       setAiSuggestions(results);
     } catch (err) {
       setGenError(err instanceof Error ? err.message : 'Generation failed');

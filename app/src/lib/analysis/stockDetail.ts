@@ -146,8 +146,14 @@ async function generateDirectly(prompt: string, apiKey: string): Promise<string>
 // ── JSON parsing (tolerant) ───────────────────────────────────────────────────
 
 function parseResponse(raw: string): GeneratedStockDetail {
-  // Strip any accidental markdown fences
-  const clean = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+  // Extract the JSON object by finding the outermost { ... } block.
+  // This tolerates Claude wrapping the response in markdown fences or adding
+  // preamble/postamble text around the JSON object.
+  const firstBrace = raw.indexOf('{');
+  const lastBrace  = raw.lastIndexOf('}');
+  const clean = firstBrace !== -1 && lastBrace > firstBrace
+    ? raw.slice(firstBrace, lastBrace + 1)
+    : raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
 
   let parsed: unknown;
   try {
