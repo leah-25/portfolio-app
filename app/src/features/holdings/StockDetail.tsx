@@ -20,7 +20,7 @@ import { formatCurrency, formatCompact, formatPct, formatDate } from '../../lib/
 import { generateStockDetail } from '../../lib/analysis/stockDetail';
 import { fetchSymbolNews } from '../../lib/marketData/polygonNews';
 
-// ── Mock data catalogue ───────────────────────────────────────────────────────
+// ── Stock data shape ─────────────────────────────────────────────────────────
 
 interface StockData {
   symbol: string;
@@ -57,108 +57,6 @@ interface StockData {
   rebalances: { date: string; action: string; rationale: string }[];
 }
 
-const MOCK_CATALOGUE: Record<string, StockData> = {
-  NVDA: {
-    symbol: 'NVDA', name: 'NVIDIA Corporation', type: 'stock', sector: 'Semiconductors',
-    description: 'NVIDIA designs and manufactures graphics processing units (GPUs) and system-on-chip units (SoCs). The company leads the AI compute infrastructure market through its CUDA software ecosystem and Hopper/Blackwell GPU architectures, serving hyperscaler data centres, cloud providers, and autonomous vehicle platforms.',
-    currentPrice: 880, quantity: 45, currentValue: 57_600, costBasis: 220,
-    pnl: 47_700, pnlPct: 481.8, weight: 28.0, targetWeight: 25,
-    conviction: 5,
-    thesisUpdatedAt: '2025-03-10T00:00:00Z',
-    thesisBody: 'NVDA is the infrastructure backbone of the AI supercycle. The CUDA moat is a decade-long competitive advantage — switching costs are enormous for hyperscalers who have built their entire ML stack on it. The Blackwell ramp in H1 2025 sets up another step-change in data-centre revenue. I am targeting $8B+ quarterly data-centre revenue by Q3 2025. The risk is a macro-driven CapEx pause, but even in that scenario NVDA retains its architectural lead. Maintaining full 28% position with high conviction.',
-    bullCase: [
-      'CUDA ecosystem moat makes switching costs prohibitive for hyperscalers.',
-      'Blackwell GPU ramp accelerates revenue — NIM inference demand is structurally new.',
-      'Sovereign AI (government clusters) opens a completely new TAM not in consensus models.',
-      'Gross margins at 73%+ as software and services layer matures.',
-    ],
-    bearCase: [
-      'US export controls on H200/B200 chips to China could remove ~15–20% of revenue.',
-      'AMD MI300X traction at Microsoft and Meta is higher than expected.',
-      'Hyperscaler custom silicon (TPU v5, Trainium 3) reduces long-term dependency.',
-      'Valuation at ~30× forward sales already prices in significant execution.',
-    ],
-    driftHistory: [
-      { date: '2023-01-15', conviction: 3, note: 'Initial position. Thesis: AI compute cycle beginning. Cautious on timing.' },
-      { date: '2023-05-25', conviction: 4, note: 'Post Q1 earnings blow-out. Data-centre revenue trajectory confirmed. Raised conviction.' },
-      { date: '2023-11-22', conviction: 5, note: 'Hopper ramp exceeded expectations. CapEx commitments from hyperscalers are structural. Maximum conviction.' },
-      { date: '2025-03-10', conviction: 5, note: 'Blackwell on-track. Thesis fully intact. No change.' },
-    ],
-    kpis: [
-      { metric: 'Data Centre Revenue (quarterly)',  target: '$8B+',  current: '$7.2B', status: 'watch' },
-      { metric: 'Gross Margin',                     target: '73%+',  current: '73.5%', status: 'on-track' },
-      { metric: 'Blackwell Shipment Ramp',          target: 'Q2 2025', current: 'On schedule', status: 'on-track' },
-      { metric: 'China Revenue Share',              target: '<10%',  current: '~12%', status: 'watch' },
-      { metric: 'AMD GPU Market Share (data centre)', target: '<15%', current: '~11%', status: 'on-track' },
-    ],
-    risks: [
-      { title: 'US export controls on H200/B200 to China', status: 'monitoring', body: 'Department of Commerce restrictions could block ~20% of revenue. Monitor Q2 policy announcements.' },
-      { title: 'AMD MI300X hyperscaler adoption', status: 'monitoring', body: 'Microsoft and Meta running workloads on MI300X. Share is non-trivial. Watching guidance commentary.' },
-      { title: 'Valuation multiple compression', status: 'open', body: 'At 30× forward sales, any earnings miss or guidance reduction would cause significant de-rating.' },
-    ],
-    catalysts: [
-      { title: 'Blackwell GPU full production ramp', date: 'Q2 2025', status: 'pending' },
-      { title: 'Q1 2025 earnings report',            date: 'May 2025', status: 'pending' },
-      { title: 'GTC developer conference',           date: 'Mar 2025', status: 'confirmed' },
-      { title: 'Hopper ramp Q1 2024',                date: 'Q1 2024', status: 'passed' },
-    ],
-    notes: [
-      { id: 'n1', period: 'Week 11 · 2025', title: 'NVDA earnings preview — data center demand holding strong', updatedAt: '2025-03-10T14:22:00Z' },
-      { id: 'n2', period: 'Q1 2025',        title: 'Q1 portfolio review — rebalance, thesis drift assessment',  updatedAt: '2025-03-31T12:00:00Z' },
-    ],
-    rebalances: [
-      { date: '2025-03-15', action: 'Reduced 3% → back to 25% target', rationale: 'NVDA drifted +3% above target following Jan rally. Sold partial position to fund AMZN underweight.' },
-      { date: '2024-01-15', action: 'Added lot — 10 shares at $495',    rationale: 'Pre-Blackwell accumulation. Conviction raised to 5/5 after H100 demand data.' },
-    ],
-  },
-  TSLA: {
-    symbol: 'TSLA', name: 'Tesla, Inc.', type: 'stock', sector: 'Automotive / EV',
-    description: "Tesla designs and manufactures electric vehicles, battery storage systems, and solar energy products. The company's long-term thesis rests on full self-driving (FSD) as a software-defined revenue stream and energy storage as a standalone business, rather than automotive volumes alone.",
-    currentPrice: 210, quantity: 60, currentValue: 22_920, costBasis: 185,
-    pnl: 11_820, pnlPct: 106.7, weight: 11.1, targetWeight: 10,
-    conviction: 3,
-    thesisUpdatedAt: '2024-11-15T00:00:00Z',
-    thesisBody: "The core automotive thesis is under pressure — BYD's pricing aggression and broader OEM EV push are compressing Tesla's pricing power and margin. I'm holding, but conviction has dropped from 4 to 3. The thesis now rests almost entirely on FSD achieving Level 4 autonomy and the Robotaxi network launch. If FSD v13 doesn't show step-change improvement in unsupervised miles, I'll reduce the position.",
-    bullCase: [
-      'FSD Level 4 autonomy unlocks a robotaxi revenue model with near-100% software margins.',
-      'Energy storage (Megapack) is growing 60%+ YoY and is highly profitable.',
-      'Optimus robot could be a completely new product category by 2026–2027.',
-    ],
-    bearCase: [
-      'BYD now outsells Tesla in China — pricing war erodes margins structurally.',
-      'FSD has been "imminent" for 5+ years — credibility risk is high.',
-      'Musk distraction (xAI, X/Twitter, DOGE) could affect product focus.',
-      'Legacy OEM EVs (BMW, Mercedes, Hyundai) improving rapidly on range and UX.',
-    ],
-    driftHistory: [
-      { date: '2022-12-29', conviction: 4, note: 'Initial position. Thesis: EV market leader + FSD optionality.' },
-      { date: '2023-10-01', conviction: 4, note: 'Price cuts hurt margins but boosted volume. Watching FSD v12.' },
-      { date: '2024-04-15', conviction: 3, note: 'BYD market share in China is larger than expected. Reduced conviction on automotive margin thesis.' },
-      { date: '2024-11-15', conviction: 3, note: 'FSD v12 still requires intervention. Autonomous thesis not yet confirmed. Holding.' },
-    ],
-    kpis: [
-      { metric: 'FSD Take Rate (US)',     target: '>30%',  current: '~18%',  status: 'miss' },
-      { metric: 'Automotive Gross Margin', target: '>18%', current: '14.6%', status: 'miss' },
-      { metric: 'Megapack Revenue (Q)',   target: '$2B+',  current: '$1.6B', status: 'watch' },
-      { metric: 'China Market Share',     target: '>12%',  current: '~8%',   status: 'miss' },
-    ],
-    risks: [
-      { title: 'BEV market share erosion', status: 'open', body: 'BYD and legacy OEMs accelerating. Pricing power declining — high risk to margin thesis.' },
-      { title: 'FSD regulatory approval',  status: 'monitoring', body: 'Level 4 requires NHTSA/DMV approval. Timeline uncertain.' },
-    ],
-    catalysts: [
-      { title: 'Robotaxi network launch', date: 'H2 2025', status: 'pending' },
-      { title: 'FSD v13 unsupervised miles', date: 'Q2 2025', status: 'pending' },
-      { title: 'Optimus production update', date: 'Q3 2025', status: 'pending' },
-    ],
-    notes: [
-      { id: 'n3', period: 'Week 10 · 2025', title: 'Macro update — Fed rhetoric and impact on growth assets', updatedAt: '2025-03-03T09:10:00Z' },
-    ],
-    rebalances: [
-      { date: '2024-12-31', action: 'Trimmed 2% — year-end rebalance', rationale: 'TSLA uncertainty warranted a small reduction. Freed capital for BTC accumulation on dip.' },
-    ],
-  },
-};
 
 // Fallback for unknown symbols
 function getFallbackData(symbol: string): StockData {
@@ -235,14 +133,11 @@ export default function StockDetail() {
   // AI-generated content for this symbol (persisted across sessions)
   const cachedEntry = stockDetailCache[upper];
 
-  // Rich catalogue content (description, bull/bear, KPIs, etc.)
-  // Priority: AI-generated > mock catalogue > fallback
-  const catalogue = MOCK_CATALOGUE[upper];
   const aiData = cachedEntry?.data;
 
   // Merged data object for the template — store wins on position fields, AI wins on content fields
   const data: StockData = {
-    ...(catalogue ?? getFallbackData(upper)),
+    ...getFallbackData(upper),
     ...(aiData ? {
       description: aiData.description,
       bullCase:    aiData.bullCase,
