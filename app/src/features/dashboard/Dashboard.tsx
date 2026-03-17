@@ -297,7 +297,7 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader
-        eyebrow={`${goalYear} · ${goalMultiple}× Target`}
+        eyebrow={`${goalMultiple}× Target`}
         title="Portfolio Overview"
         description={description}
         actions={
