@@ -61,7 +61,7 @@ export const useMarketStore = create<MarketState>()(
           const list = await fetchQuotes(symbols, apiKey, provider);
           const map: Record<string, Quote> = {};
           for (const q of list) map[q.symbol] = q;
-          set({ quotes: map, loading: false, lastUpdated: Date.now() });
+          set({ quotes: { ...get().quotes, ...map }, loading: false, lastUpdated: Date.now() });
         } catch (err) {
           set({
             loading: false,

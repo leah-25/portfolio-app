@@ -133,7 +133,7 @@ async function generateDirectly(prompt: string, apiKey: string): Promise<string>
 
   const msg = await client.messages.create({
     model: 'claude-opus-4-6',
-    max_tokens: 2048,
+    max_tokens: 4096,
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: prompt }],
   });

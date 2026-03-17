@@ -169,7 +169,7 @@ export default function Holdings() {
       const currentValue = h.quantity * q.price;
       const totalCost    = h.quantity * h.costBasis;
       const pnl          = currentValue - totalCost;
-      const pnlPct       = (pnl / totalCost) * 100;
+      const pnlPct       = pnl / totalCost;
       return { ...h, currentValue, pnl, pnlPct };
     }),
     [holdings, quotes],
