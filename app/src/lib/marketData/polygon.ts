@@ -37,7 +37,18 @@ function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-const FETCH_TIMEOUT_MS = 12_000;
+const FETCH_TIMEOUT_MS = 20_000;
+// Stagger between requests to avoid hitting Polygon free-tier rate limits
+// (5 req/min on free tier). 300 ms apart → 10 symbols ≈ 3 s total.
+const STAGGER_MS = 300;
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) { reject(new DOMException('Aborted', 'AbortError')); return; }
+    const t = setTimeout(resolve, ms);
+    signal.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('Aborted', 'AbortError')); }, { once: true });
+  });
+}
 
 async function fetchSymbolQuote(
   symbol: string,
@@ -60,7 +71,9 @@ async function fetchSymbolQuote(
   }
 
   if (res.status === 429) {
-    throw new Error('Polygon rate limit reached. Lower your refresh interval in Settings or upgrade your Polygon plan.');
+    // Rate-limited — skip this symbol rather than aborting the whole batch
+    console.warn(`Polygon rate limit hit for ${symbol} — skipping`);
+    return null;
   }
   if (res.status === 401 || res.status === 403) {
     throw new Error('Invalid Polygon API key — check your key in Settings.');
@@ -104,19 +117,25 @@ export const polygonProvider: MarketProvider = {
   async fetchQuotes(symbols, apiKey) {
     if (symbols.length === 0) return [];
 
-    // Fetch all symbols in parallel under a single shared timeout.
-    // The old sequential + 300 ms sleep approach took O(n × delay) time;
-    // parallel cuts that to a single round-trip for the whole portfolio.
+    // Sequential fetches with a small stagger to stay within Polygon's free-tier
+    // rate limit (5 req/min). Fully parallel requests all hit simultaneously and
+    // trigger 429s; staggered sequential avoids that with minimal latency overhead.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
+    const quotes: Quote[] = [];
     try {
-      const results = await Promise.all(
-        symbols.map((s) => fetchSymbolQuote(s, apiKey, controller.signal)),
-      );
-      return results.filter((q): q is Quote => q !== null);
+      for (let i = 0; i < symbols.length; i++) {
+        if (controller.signal.aborted) break;
+        if (i > 0) {
+          try { await sleep(STAGGER_MS, controller.signal); } catch { break; }
+        }
+        const q = await fetchSymbolQuote(symbols[i], apiKey, controller.signal);
+        if (q) quotes.push(q);
+      }
     } finally {
       clearTimeout(timer);
     }
+    return quotes;
   },
 };
