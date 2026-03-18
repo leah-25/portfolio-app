@@ -115,12 +115,16 @@ async function generateViaProxy(prompt: string): Promise<string> {
   });
 
   if (!res.ok) {
-    let msg = 'Proxy request failed';
+    let msg = `Proxy request failed (HTTP ${res.status})`;
     try {
       const body = await res.text();
-      const parsed = JSON.parse(body) as Record<string, unknown>;
-      msg = String(parsed.error ?? parsed.message ?? body);
-    } catch { /* plain text captured above */ }
+      try {
+        const parsed = JSON.parse(body) as Record<string, unknown>;
+        msg = String(parsed.error ?? parsed.message ?? body || msg);
+      } catch {
+        if (body) msg = body;
+      }
+    } catch { /* ignore read errors */ }
     throw new Error(msg);
   }
 

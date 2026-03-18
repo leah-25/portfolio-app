@@ -185,9 +185,14 @@ export default function StockDetail() {
     setGenError(null);
     try {
       const recentNews = hasPolygonNews
-        ? (await fetchSymbolNews(upper, marketApiKey)).map(
-            (n) => `[${n.published}] ${n.title}${n.description ? ` — ${n.description.slice(0, 120)}` : ''}`,
-          )
+        ? await Promise.race([
+            fetchSymbolNews(upper, marketApiKey).then((items) =>
+              items.map(
+                (n) => `[${n.published}] ${n.title}${n.description ? ` — ${n.description.slice(0, 120)}` : ''}`,
+              ),
+            ),
+            new Promise<undefined>((r) => setTimeout(() => r(undefined), 5_000)),
+          ])
         : undefined;
 
       const result = await generateStockDetail(holding, {
