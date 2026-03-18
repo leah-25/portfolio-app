@@ -37,35 +37,36 @@ function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
+const FETCH_TIMEOUT_MS = 12_000;
 
-async function fetchSymbolQuote(symbol: string, apiKey: string, attempt = 0): Promise<Quote | null> {
+async function fetchSymbolQuote(
+  symbol: string,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<Quote | null> {
   const polygonTicker = toPolygon(symbol);
   const now  = new Date();
   const from = new Date(now);
   from.setDate(from.getDate() - 10);  // go back 10 calendar days to cover weekends/holidays
 
-  // Use sort=desc&limit=2 to get the 2 most recent trading-day bars.
-  // Do NOT encodeURIComponent the ticker — Polygon expects the literal colon in X:BTCUSD.
   const url = `https://api.polygon.io/v2/aggs/ticker/${polygonTicker}/range/1/day/${isoDate(from)}/${isoDate(now)}?adjusted=true&sort=desc&limit=2&apiKey=${apiKey}`;
 
-  const res = await fetch(url);
+  let res: Response;
+  try {
+    res = await fetch(url, { signal });
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') return null; // timed out — skip symbol
+    throw err;
+  }
 
   if (res.status === 429) {
-    // Rate limited — retry once after a 15 s back-off
-    if (attempt < 1) {
-      await sleep(15_000);
-      return fetchSymbolQuote(symbol, apiKey, attempt + 1);
-    }
     throw new Error('Polygon rate limit reached. Lower your refresh interval in Settings or upgrade your Polygon plan.');
   }
   if (res.status === 401 || res.status === 403) {
     throw new Error('Invalid Polygon API key — check your key in Settings.');
   }
   if (!res.ok) {
-    throw new Error(`Polygon request failed (HTTP ${res.status}).`);
+    return null; // non-fatal per-symbol error — skip rather than failing entire batch
   }
 
   const data: PolygonAggResponse = await res.json() as PolygonAggResponse;
@@ -77,7 +78,6 @@ async function fetchSymbolQuote(symbol: string, apiKey: string, attempt = 0): Pr
   const bars = data.results ?? [];
   if (bars.length === 0) return null;
 
-  // sort=desc: bars[0] = most recent day, bars[1] = previous day
   const latest   = bars[0];
   const previous = bars.length >= 2 ? bars[1] : null;
 
@@ -102,12 +102,21 @@ async function fetchSymbolQuote(symbol: string, apiKey: string, attempt = 0): Pr
 
 export const polygonProvider: MarketProvider = {
   async fetchQuotes(symbols, apiKey) {
-    const results: (Quote | null)[] = [];
-    for (let i = 0; i < symbols.length; i++) {
-      results.push(await fetchSymbolQuote(symbols[i], apiKey));
-      // 300 ms between calls to stay within Polygon free-tier rate limits
-      if (i < symbols.length - 1) await sleep(300);
+    if (symbols.length === 0) return [];
+
+    // Fetch all symbols in parallel under a single shared timeout.
+    // The old sequential + 300 ms sleep approach took O(n × delay) time;
+    // parallel cuts that to a single round-trip for the whole portfolio.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      const results = await Promise.all(
+        symbols.map((s) => fetchSymbolQuote(s, apiKey, controller.signal)),
+      );
+      return results.filter((q): q is Quote => q !== null);
+    } finally {
+      clearTimeout(timer);
     }
-    return results.filter((q): q is Quote => q !== null);
   },
 };
