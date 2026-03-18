@@ -68,8 +68,16 @@ async function callClaude(
       body: JSON.stringify({ prompt, systemPrompt }),
     });
     if (!res.ok) {
-      const data = await res.json() as { error?: string };
-      throw new Error(data.error ?? `Request failed (HTTP ${res.status})`);
+      // Read as text first — the response may not be JSON (e.g. plain-text
+      // runtime errors), and calling .json() directly would throw a misleading
+      // "Unexpected token" parse error instead of the real message.
+      let message = `Request failed (HTTP ${res.status})`;
+      try {
+        const text = await res.text();
+        try { message = (JSON.parse(text) as { error?: string }).error ?? (text || message); }
+        catch { message = text || message; }
+      } catch { /* ignore read errors */ }
+      throw new Error(message);
     }
     const data = await res.json() as { text: string };
     return data.text;
@@ -78,7 +86,7 @@ async function callClaude(
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   const msg = await client.messages.create({
     model: 'claude-opus-4-6',
-    max_tokens: 1024,
+    max_tokens: 4096,
     system: systemPrompt,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -89,10 +97,28 @@ async function callClaude(
 
 function parseJSON<T>(text: string): T {
   // Strip markdown code fences if Claude wraps the JSON
-  const cleaned = text
+  const stripped = text
     .replace(/^```(?:json)?\s*/m, '')
     .replace(/\s*```\s*$/m, '')
     .trim();
+
+  // Try to extract the outermost JSON object or array, tolerating any
+  // preamble / postamble text Claude might add despite the system prompt.
+  const firstObj     = stripped.indexOf('{');
+  const firstArr     = stripped.indexOf('[');
+  const lastObj      = stripped.lastIndexOf('}');
+  const lastArr      = stripped.lastIndexOf(']');
+
+  const objValid = firstObj !== -1 && lastObj > firstObj;
+  const arrValid = firstArr !== -1 && lastArr > firstArr;
+
+  let cleaned = stripped;
+  if (arrValid && (!objValid || firstArr < firstObj)) {
+    cleaned = stripped.slice(firstArr, lastArr + 1);
+  } else if (objValid) {
+    cleaned = stripped.slice(firstObj, lastObj + 1);
+  }
+
   return JSON.parse(cleaned) as T;
 }
 
