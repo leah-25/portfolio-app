@@ -120,7 +120,7 @@ async function generateViaProxy(prompt: string): Promise<string> {
       const body = await res.text();
       try {
         const parsed = JSON.parse(body) as Record<string, unknown>;
-        msg = String(parsed.error ?? parsed.message ?? body || msg);
+        msg = String(parsed.error ?? parsed.message ?? (body || msg));
       } catch {
         if (body) msg = body;
       }
