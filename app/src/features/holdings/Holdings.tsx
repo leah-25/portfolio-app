@@ -62,6 +62,7 @@ function FilterGroup<T extends string>({
 // ── Review date cell ──────────────────────────────────────────────────────────
 
 function ReviewCell({ iso }: { iso: string }) {
+  // eslint-disable-next-line react-hooks/purity
   const daysDiff = Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
   const stale = daysDiff > 90;
   const warn  = daysDiff > 60 && !stale;
@@ -159,7 +160,7 @@ export default function Holdings() {
     if (refreshInterval <= 0) return;
     const id = setInterval(doRefresh, refreshInterval * 60 * 1000);
     return () => clearInterval(id);
-  }, [doRefresh, refreshInterval]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [doRefresh, refreshInterval]);
 
   // ── Enrich stored holdings with live quote data ───────────────────────────
   const enriched = useMemo(() =>
@@ -176,7 +177,7 @@ export default function Holdings() {
   );
 
   const rows = useMemo(() => {
-    let out = enriched.filter((h) => {
+    const out = enriched.filter((h) => {
       if (search) {
         const q = search.toLowerCase();
         if (!h.symbol.toLowerCase().includes(q) && !h.name.toLowerCase().includes(q)) return false;

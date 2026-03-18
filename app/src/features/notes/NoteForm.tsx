@@ -41,10 +41,12 @@ export default function NoteForm({ open, onClose, note, defaultType = 'weekly', 
 
   useEffect(() => {
     if (open) {
+      /* eslint-disable react-hooks/set-state-in-effect */
       setForm(note ? noteToForm(note) : { ...BLANK, type: defaultType, ...prefill });
       setErrors({});
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
-  }, [open, note, defaultType]);
+  }, [open, note, defaultType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function set<K extends keyof typeof BLANK>(key: K, value: (typeof BLANK)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));

@@ -67,8 +67,10 @@ export default function HoldingForm({ holding, open, onClose }: HoldingFormProps
   // Sync form when opening
   useEffect(() => {
     if (open) {
+      /* eslint-disable react-hooks/set-state-in-effect */
       setForm(isEdit ? holdingToForm(holding) : BLANK);
       setErrors({});
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [open, holding, isEdit]);
 

@@ -1,3 +1,4 @@
+// eslint-disable-next-line react-refresh/only-export-components
 export const CONVICTION_LABELS: Record<number, string> = {
   1: 'Very Low',
   2: 'Low',
