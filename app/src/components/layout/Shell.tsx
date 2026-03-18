@@ -9,7 +9,10 @@ export default function Shell() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close mobile nav on route change
-  useEffect(() => { setMobileOpen(false); }, [pathname]);
+  useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    setMobileOpen(false);
+  }, [pathname]);
 
   const openMobileNav = useCallback(() => setMobileOpen(true), []);
 

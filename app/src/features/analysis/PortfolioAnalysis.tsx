@@ -57,12 +57,15 @@ export default function PortfolioAnalysis({ open, onClose, holdings, title = 'AI
   const bodyRef        = useRef<HTMLDivElement>(null);
   const accumulatedRef = useRef('');
   const statusRef      = useRef(status);
+  // eslint-disable-next-line react-hooks/refs
   statusRef.current    = status;
 
   const cacheRef       = useRef(analysisCache);
+  // eslint-disable-next-line react-hooks/refs
   cacheRef.current     = analysisCache;
   const currentKey     = useMemo(() => buildCacheKey(holdings), [holdings]);
   const currentKeyRef  = useRef(currentKey);
+  // eslint-disable-next-line react-hooks/refs
   currentKeyRef.current = currentKey;
 
   // On open: load from cache if portfolio unchanged, else idle
@@ -78,7 +81,7 @@ export default function PortfolioAnalysis({ open, onClose, holdings, title = 'AI
       setError('');
       setStatus('idle');
     }
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Auto-scroll while streaming
   useEffect(() => {

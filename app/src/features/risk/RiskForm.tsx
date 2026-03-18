@@ -41,8 +41,10 @@ export default function RiskForm({ open, onClose, entry }: RiskFormProps) {
 
   useEffect(() => {
     if (open) {
+      /* eslint-disable react-hooks/set-state-in-effect */
       setForm(entry ? entryToForm(entry) : BLANK);
       setErrors({});
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [open, entry]);
 

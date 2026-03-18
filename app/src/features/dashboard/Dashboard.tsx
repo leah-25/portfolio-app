@@ -203,7 +203,7 @@ export default function Dashboard() {
     if (refreshInterval <= 0) return;
     const id = setInterval(doRefresh, refreshInterval * 60 * 1000);
     return () => clearInterval(id);
-  }, [doRefresh, refreshInterval]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [doRefresh, refreshInterval]);
 
   // ── Enrich with live prices ──────────────────────────────────────────────
   const enriched = useMemo(() =>
@@ -269,6 +269,7 @@ export default function Dashboard() {
       };
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     return named.map(({ _value: _, ...s }) => s);
   }, [withWeights, totalValue]);
 

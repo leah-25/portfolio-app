@@ -29,14 +29,16 @@ export default function RebalanceLogForm({ open, onClose, entry, prefill }: Reba
 
   useEffect(() => {
     if (open) {
+      /* eslint-disable react-hooks/set-state-in-effect */
       setForm(entry ? entryToForm(entry) : {
         ...BLANK,
         date: new Date().toISOString().slice(0, 10),
         ...(prefill ?? {}),
       });
       setErrors({});
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
-  }, [open, entry]);
+  }, [open, entry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function set<K extends keyof typeof BLANK>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));

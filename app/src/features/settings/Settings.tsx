@@ -96,7 +96,6 @@ export default function Settings() {
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target?.result as string);
-        if (data.holdings)  holdingsStore.holdings; // read only guard
         // Use zustand setState directly via the store actions
         if (Array.isArray(data.holdings)) {
           useHoldingsStore.setState({ holdings: data.holdings });
