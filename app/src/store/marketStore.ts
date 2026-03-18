@@ -48,6 +48,9 @@ export const useMarketStore = create<MarketState>()(
       clearError: ()     => set({ error: null }),
 
       refresh: async (symbols) => {
+        // Skip if nothing to fetch or a fetch is already in-flight
+        if (symbols.length === 0 || get().loading) return;
+
         const { apiKey, provider } = get();
 
         if (!apiKey) {
