@@ -3,7 +3,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 
-export const config = { runtime: 'edge' };
+export const config = { runtime: 'edge', maxDuration: 60 };
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
@@ -34,7 +34,7 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     const client = new Anthropic({ apiKey });
     const msg = await client.messages.create({
-      model: 'claude-opus-4-6',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: 'user', content: prompt }],
