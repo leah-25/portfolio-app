@@ -1,12 +1,12 @@
-// Vercel Edge Function — POST /api/analyze
-// Mirrors the Vite dev-server proxy (vite.config.ts configureServer) for production.
-// Edge runtime: streams natively, no response buffering, works on all Vercel plans.
+// Vercel Serverless Function — POST /api/analyze
+// Streams NDJSON chunks back to the client as Claude generates the analysis.
+// Serverless runtime gives 60s maxDuration (vs 30s hard cap for edge on Hobby plan).
 
 import Anthropic from '@anthropic-ai/sdk';
-import { buildPrompt } from '../src/lib/analysis/promptBuilder';
-import type { PromptHolding, PromptQuote } from '../src/lib/analysis/promptBuilder';
+import { buildPrompt } from '../src/lib/analysis/promptBuilder.js';
+import type { PromptHolding, PromptQuote } from '../src/lib/analysis/promptBuilder.js';
 
-export const config = { runtime: 'edge', maxDuration: 60 };
+export const config = { maxDuration: 60 };
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
