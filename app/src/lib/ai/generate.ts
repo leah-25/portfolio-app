@@ -54,6 +54,31 @@ function formatNewsBlock(news?: Record<string, string[]>): string {
   return lines.join('\n');
 }
 
+// ── NDJSON stream reader (for /api/generate and /api/analyze responses) ───────
+
+async function readNdjsonStream(res: Response): Promise<string> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let accumulated = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const msg = JSON.parse(line) as { type: string; text?: string; message?: string };
+      if (msg.type === 'chunk' && msg.text) accumulated += msg.text;
+      else if (msg.type === 'error') throw new Error(msg.message ?? 'Generation failed');
+    }
+  }
+
+  return accumulated;
+}
+
 // ── Core caller ───────────────────────────────────────────────────────────────
 
 async function callClaude(
@@ -68,9 +93,6 @@ async function callClaude(
       body: JSON.stringify({ prompt, systemPrompt }),
     });
     if (!res.ok) {
-      // Read as text first — the response may not be JSON (e.g. plain-text
-      // runtime errors), and calling .json() directly would throw a misleading
-      // "Unexpected token" parse error instead of the real message.
       let message = `Request failed (HTTP ${res.status})`;
       try {
         const text = await res.text();
@@ -79,8 +101,7 @@ async function callClaude(
       } catch { /* ignore read errors */ }
       throw new Error(message);
     }
-    const data = await res.json() as { text: string };
-    return data.text;
+    return readNdjsonStream(res);
   }
 
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });

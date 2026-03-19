@@ -128,8 +128,27 @@ async function generateViaProxy(prompt: string): Promise<string> {
     throw new Error(msg);
   }
 
-  const { text } = (await res.json()) as { text: string };
-  return text;
+  // /api/generate now streams NDJSON chunks — accumulate into full text
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let accumulated = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const msg = JSON.parse(line) as { type: string; text?: string; message?: string };
+      if (msg.type === 'chunk' && msg.text) accumulated += msg.text;
+      else if (msg.type === 'error') throw new Error(msg.message ?? 'Generation failed');
+    }
+  }
+
+  return accumulated;
 }
 
 async function generateDirectly(prompt: string, apiKey: string): Promise<string> {
