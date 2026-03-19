@@ -1,5 +1,7 @@
 // Vercel Serverless Function — POST /api/generate
-// Streams the Claude response as NDJSON; client accumulates chunks into full text.
+// Synchronous: awaits the full Claude response then returns { text }.
+// Streaming async patterns (TransformStream IIFE, ReadableStream start()) are
+// frozen by Lambda-based serverless after the handler returns — don't use them.
 
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -31,49 +33,24 @@ export default async function handler(req: Request): Promise<Response> {
     );
   }
 
-  const encoder = new TextEncoder();
+  try {
+    const client = new Anthropic({ apiKey, timeout: 50_000 });
+    const msg = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: prompt }],
+    });
 
-  // Use ReadableStream with start() so the async work runs inside the stream's
-  // own lifecycle — not as a detached IIFE that serverless runtimes may freeze.
-  const body = new ReadableStream({
-    async start(controller) {
-      try {
-        const client = new Anthropic({ apiKey, timeout: 50_000 });
-        const stream = client.messages.stream({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 2048,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: prompt }],
-        });
-
-        for await (const event of stream) {
-          if (
-            event.type === 'content_block_delta' &&
-            event.delta.type === 'text_delta'
-          ) {
-            controller.enqueue(
-              encoder.encode(JSON.stringify({ type: 'chunk', text: event.delta.text }) + '\n'),
-            );
-          }
-        }
-
-        controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'));
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Generation failed';
-        controller.enqueue(
-          encoder.encode(JSON.stringify({ type: 'error', message }) + '\n'),
-        );
-      } finally {
-        controller.close();
-      }
-    },
-  });
-
-  return new Response(body, {
-    headers: {
-      'Content-Type': 'application/x-ndjson',
-      'Cache-Control': 'no-cache',
-      'X-Accel-Buffering': 'no',
-    },
-  });
+    const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '';
+    return new Response(JSON.stringify({ text }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Generation failed';
+    return new Response(
+      JSON.stringify({ error: message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
 }

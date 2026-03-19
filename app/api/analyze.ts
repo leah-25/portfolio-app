@@ -1,5 +1,7 @@
 // Vercel Serverless Function — POST /api/analyze
-// Streams NDJSON chunks back to the client as Claude generates the analysis.
+// Synchronous: awaits the full Claude response then returns it as NDJSON.
+// Streaming async patterns (TransformStream IIFE, ReadableStream start()) are
+// frozen by Lambda-based serverless after the handler returns — don't use them.
 
 import Anthropic from '@anthropic-ai/sdk';
 import { buildPrompt } from '../src/lib/analysis/promptBuilder.js';
@@ -30,48 +32,27 @@ export default async function handler(req: Request): Promise<Response> {
     );
   }
 
-  const encoder = new TextEncoder();
+  try {
+    const client = new Anthropic({ apiKey, timeout: 50_000 });
+    const msg = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: buildPrompt(holdings, quotes) }],
+    });
 
-  // Use ReadableStream with start() so the async work runs inside the stream's
-  // own lifecycle — not as a detached IIFE that serverless runtimes may freeze.
-  const body = new ReadableStream({
-    async start(controller) {
-      try {
-        const client = new Anthropic({ apiKey, timeout: 50_000 });
-        const stream = client.messages.stream({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 2048,
-          messages: [{ role: 'user', content: buildPrompt(holdings, quotes) }],
-        });
+    const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '';
+    const body =
+      JSON.stringify({ type: 'chunk', text }) + '\n' +
+      JSON.stringify({ type: 'done' }) + '\n';
 
-        for await (const event of stream) {
-          if (
-            event.type === 'content_block_delta' &&
-            event.delta.type === 'text_delta'
-          ) {
-            controller.enqueue(
-              encoder.encode(JSON.stringify({ type: 'chunk', text: event.delta.text }) + '\n'),
-            );
-          }
-        }
-
-        controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'));
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Analysis failed';
-        controller.enqueue(
-          encoder.encode(JSON.stringify({ type: 'error', message }) + '\n'),
-        );
-      } finally {
-        controller.close();
-      }
-    },
-  });
-
-  return new Response(body, {
-    headers: {
-      'Content-Type': 'application/x-ndjson',
-      'Cache-Control': 'no-cache',
-      'X-Accel-Buffering': 'no',
-    },
-  });
+    return new Response(body, {
+      headers: { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-cache' },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Analysis failed';
+    return new Response(
+      JSON.stringify({ type: 'error', message }) + '\n',
+      { status: 500, headers: { 'Content-Type': 'application/x-ndjson' } },
+    );
+  }
 }
