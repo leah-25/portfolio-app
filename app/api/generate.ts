@@ -1,6 +1,5 @@
 // Vercel Serverless Function — POST /api/generate
-// Streams the Claude response as NDJSON to avoid function timeout on long generations.
-// Client reads chunks and assembles the full text; same wire format as /api/analyze.
+// Streams the Claude response as NDJSON; client accumulates chunks into full text.
 
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -33,42 +32,44 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const encoder = new TextEncoder();
-  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-  const writer = writable.getWriter();
 
-  (async () => {
-    try {
-      const client = new Anthropic({ apiKey, timeout: 50_000 });
-      const stream = client.messages.stream({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 2048,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: prompt }],
-      });
+  // Use ReadableStream with start() so the async work runs inside the stream's
+  // own lifecycle — not as a detached IIFE that serverless runtimes may freeze.
+  const body = new ReadableStream({
+    async start(controller) {
+      try {
+        const client = new Anthropic({ apiKey, timeout: 50_000 });
+        const stream = client.messages.stream({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 2048,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: prompt }],
+        });
 
-      for await (const event of stream) {
-        if (
-          event.type === 'content_block_delta' &&
-          event.delta.type === 'text_delta'
-        ) {
-          await writer.write(
-            encoder.encode(JSON.stringify({ type: 'chunk', text: event.delta.text }) + '\n'),
-          );
+        for await (const event of stream) {
+          if (
+            event.type === 'content_block_delta' &&
+            event.delta.type === 'text_delta'
+          ) {
+            controller.enqueue(
+              encoder.encode(JSON.stringify({ type: 'chunk', text: event.delta.text }) + '\n'),
+            );
+          }
         }
+
+        controller.enqueue(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Generation failed';
+        controller.enqueue(
+          encoder.encode(JSON.stringify({ type: 'error', message }) + '\n'),
+        );
+      } finally {
+        controller.close();
       }
+    },
+  });
 
-      await writer.write(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Generation failed';
-      await writer.write(
-        encoder.encode(JSON.stringify({ type: 'error', message }) + '\n'),
-      );
-    } finally {
-      await writer.close();
-    }
-  })();
-
-  return new Response(readable, {
+  return new Response(body, {
     headers: {
       'Content-Type': 'application/x-ndjson',
       'Cache-Control': 'no-cache',
