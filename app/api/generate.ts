@@ -1,5 +1,6 @@
-// Vercel Edge Function — POST /api/generate
-// Non-streaming: takes { prompt, systemPrompt }, calls Claude, returns { text }
+// Vercel Serverless Function — POST /api/generate
+// Streams the Claude response as NDJSON to avoid function timeout on long generations.
+// Client reads chunks and assembles the full text; same wire format as /api/analyze.
 
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -31,26 +32,48 @@ export default async function handler(req: Request): Promise<Response> {
     );
   }
 
-  try {
-    const client = new Anthropic({ apiKey });
-    const msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: prompt }],
-    });
+  const encoder = new TextEncoder();
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = writable.getWriter();
 
-    const content = msg.content[0];
-    if (content.type !== 'text') throw new Error('Unexpected response type');
+  (async () => {
+    try {
+      const client = new Anthropic({ apiKey });
+      const stream = client.messages.stream({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: prompt }],
+      });
 
-    return new Response(JSON.stringify({ text: content.text }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Generation failed';
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+      for await (const event of stream) {
+        if (
+          event.type === 'content_block_delta' &&
+          event.delta.type === 'text_delta'
+        ) {
+          await writer.write(
+            encoder.encode(JSON.stringify({ type: 'chunk', text: event.delta.text }) + '\n'),
+          );
+        }
+      }
+
+      await stream.finalMessage();
+      await writer.write(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Generation failed';
+      await writer.write(
+        encoder.encode(JSON.stringify({ type: 'error', message }) + '\n'),
+      );
+    } finally {
+      await writer.close();
+    }
+  })();
+
+  return new Response(readable, {
+    headers: {
+      'Content-Type': 'application/x-ndjson',
+      'Cache-Control': 'no-cache',
+      'X-Accel-Buffering': 'no',
+    },
+  });
 }
