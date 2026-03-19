@@ -38,7 +38,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   (async () => {
     try {
-      const client = new Anthropic({ apiKey });
+      const client = new Anthropic({ apiKey, timeout: 50_000 });
       const stream = client.messages.stream({
         model: 'claude-sonnet-4-6',
         max_tokens: 2048,
@@ -57,7 +57,6 @@ export default async function handler(req: Request): Promise<Response> {
         }
       }
 
-      await stream.finalMessage();
       await writer.write(encoder.encode(JSON.stringify({ type: 'done' }) + '\n'));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Generation failed';
