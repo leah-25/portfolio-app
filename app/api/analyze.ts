@@ -42,7 +42,7 @@ export default async function handler(req: Request): Promise<Response> {
       const client = new Anthropic({ apiKey });
       const stream = client.messages.stream({
         model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
+        max_tokens: 2048,
         messages: [{ role: 'user', content: buildPrompt(holdings, quotes) }],
       });
 
