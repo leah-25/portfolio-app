@@ -5,9 +5,7 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "functions": {
-    "app/api/analyze.ts":  { "maxDuration": 60 },
-    "app/api/generate.ts": { "maxDuration": 60 },
-    "api/analyze.ts":      { "maxDuration": 60 },
-    "api/generate.ts":     { "maxDuration": 60 }
+    "api/analyze.ts":  { "maxDuration": 60 },
+    "api/generate.ts": { "maxDuration": 60 }
   }
 }
