@@ -4,8 +4,8 @@
 // frozen by Lambda-based serverless after the handler returns — don't use them.
 
 import Anthropic from '@anthropic-ai/sdk';
-import { buildPrompt } from '../src/lib/analysis/promptBuilder.js';
-import type { PromptHolding, PromptQuote } from '../src/lib/analysis/promptBuilder.js';
+import { buildPrompt } from '../app/src/lib/analysis/promptBuilder.js';
+import type { PromptHolding, PromptQuote } from '../app/src/lib/analysis/promptBuilder.js';
 
 export const config = { maxDuration: 60 };
 

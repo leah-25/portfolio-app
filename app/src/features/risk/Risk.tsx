@@ -29,6 +29,8 @@ function EntryCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
   return (
     <Card variant="flat" hoverable>
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -41,7 +43,29 @@ function EntryCard({
         )}
       </div>
       <p className="text-sm font-semibold text-text-primary mb-1 leading-snug">{entry.title}</p>
-      <p className="text-xs text-text-muted leading-relaxed truncate-2 mb-3">{entry.body}</p>
+      <p
+        className={`text-xs text-text-muted leading-relaxed mb-1 cursor-pointer ${expanded ? '' : 'line-clamp-2'}`}
+        onClick={() => setExpanded((v) => !v)}
+        title={expanded ? 'Click to collapse' : 'Click to expand'}
+      >
+        {entry.body}
+      </p>
+      {!expanded && entry.body && entry.body.length > 120 && (
+        <button
+          className="text-2xs text-text-muted hover:text-text-primary mb-2 underline underline-offset-2"
+          onClick={() => setExpanded(true)}
+        >
+          Show more
+        </button>
+      )}
+      {expanded && (
+        <button
+          className="text-2xs text-text-muted hover:text-text-primary mb-2 underline underline-offset-2"
+          onClick={() => setExpanded(false)}
+        >
+          Show less
+        </button>
+      )}
       <div className="flex items-center justify-end gap-2">
         <button
           onClick={onDelete}
