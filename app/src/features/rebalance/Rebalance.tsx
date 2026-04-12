@@ -139,6 +139,12 @@ export default function Rebalance() {
   const [generatingActions, setGeneratingActions]   = useState(false);
   const [genError, setGenError]                     = useState<string | null>(null);
 
+  // Actual cash = whatever isn't allocated to holdings
+  const cashActual = parseFloat(
+    Math.max(0, 100 - holdings.reduce((s, h) => s + h.weight, 0)).toFixed(1),
+  );
+  const cashSuggestion = aiSuggestions?.find((s) => s.symbol === 'CASH') ?? null;
+
   // Build rows combining live holdings + pending edits
   const allRows = holdings.map((h) => {
     const pendingVal = pendingTargets[h.symbol];
@@ -388,6 +394,33 @@ export default function Rebalance() {
                         </Td>
                       </Tr>
                     ))}
+                    {cashSuggestion && (() => {
+                      const cashTarget = cashSuggestion.targetWeight;
+                      const cashDelta  = parseFloat((cashActual - cashTarget).toFixed(1));
+                      return (
+                        <Tr key="CASH">
+                          <Td>
+                            <span className="font-semibold text-text-muted">CASH</span>
+                          </Td>
+                          <Td numeric>
+                            <span className="text-xs tabular-nums text-text-muted">{cashTarget}%</span>
+                          </Td>
+                          <Td numeric>
+                            <span className="text-xs tabular-nums text-text-muted">{cashActual.toFixed(1)}%</span>
+                          </Td>
+                          <Td
+                            numeric
+                            sentiment={
+                              cashDelta > 0.5 ? 'gain'
+                              : cashDelta < -0.5 ? 'loss'
+                              : 'neutral'
+                            }
+                          >
+                            {`${cashDelta > 0 ? '+' : ''}${cashDelta.toFixed(1)}%`}
+                          </Td>
+                        </Tr>
+                      );
+                    })()}
                   </Tbody>
                 </Table>
               )}
@@ -400,12 +433,18 @@ export default function Rebalance() {
                   <Sparkles size={10} /> AI target rationales
                 </p>
                 <ul className="space-y-1">
-                  {aiSuggestions.map((s) => (
+                  {aiSuggestions.filter((s) => s.symbol !== 'CASH').map((s) => (
                     <li key={s.symbol} className="text-xs text-text-muted leading-relaxed">
                       <span className="font-semibold text-text-primary">{s.symbol} {s.targetWeight}%</span>
                       {' — '}{s.rationale}
                     </li>
                   ))}
+                  {cashSuggestion && (
+                    <li key="CASH" className="text-xs text-text-muted leading-relaxed border-t border-border-subtle pt-1 mt-1">
+                      <span className="font-semibold text-text-muted">CASH {cashSuggestion.targetWeight}%</span>
+                      {' — '}{cashSuggestion.rationale}
+                    </li>
+                  )}
                 </ul>
               </Card>
             )}
