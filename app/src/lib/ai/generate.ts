@@ -272,33 +272,55 @@ export async function generateTargetAllocations(
     conviction: number | null;
     thesisDrift: boolean;
     riskLevel: string;
+    marketCap: number | null;
   }>,
   apiKey?: string,
   newsContext?: Record<string, string[]>,
   goal: GoalContext = buildGoalContext(10, 2030),
 ): Promise<GeneratedTargetAllocation[]> {
   const systemPrompt =
-    `You are a portfolio manager building an aggressive growth portfolio targeting ${goal.label}. ` +
-    'The investor accepts high volatility and concentrated risk in exchange for asymmetric upside. ' +
-    'Targets must sum to exactly 100. ' +
-    `Overweight high-conviction positions with a credible ${goal.multiple}× path even if risk is rated high. ` +
-    'Underweight or trim positions with thesis drift, low conviction, or limited upside. ' +
-    '\n\nCRITICAL RULES:\n' +
-    `1. VALUATION CEILING TEST: Calculate each position's current market cap × ${goal.multiple}. If the result exceeds the total addressable market (TAM) of that industry by 2030, cap the target weight at 5% maximum — the ${goal.multiple}× math doesn't work for mega-caps.\n` +
-    `2. SMALL-CAP ADVANTAGE: Positions with market cap under $5B have the easiest path to ${goal.multiple}× (smaller base). When conviction scores are equal, allocate MORE to smaller market cap names, not less.\n` +
-    '3. CASH RESERVE: Reserve 5-10% as cash (do NOT allocate to holdings). Targets for holdings should sum to 90-95, not 100. The remaining 5-10% is dry powder for drawdown buying opportunities.\n' +
-    '4. MEAN REVERSION OPPORTUNITY: Positions that are down >30% from their 52-week high BUT still have intact thesis (no drift flag) should be INCREASED in target weight, not decreased. Falling price with intact thesis = better entry point = higher asymmetric reward.\n' +
-    '5. SINGLE POSITION CAP: No single position should exceed 25% target weight to limit concentration risk.\n' +
-    '6. SECTOR CAP: Total exposure to any single sector should not exceed 50%.\n' +
+    `You are a senior portfolio manager at a Tier-1 hedge fund. The portfolio targets ${goal.label}. ` +
+    'Each holding below includes its current market cap and the implied market cap at ' +
+    `${goal.multiple}×. Use these numbers directly — do not guess.\n\n` +
+    'Calculate optimal target weights using these three principles IN ORDER:\n\n' +
+    `PRINCIPLE 1 — ${goal.multiple}× MATH TEST (primary filter, determines weight CEILING):\n` +
+    `Look at each position's "${goal.multiple}× target" market cap provided in the data.\n` +
+    `- ${goal.multiple}× target is realistic within industry TAM → eligible for 15-25% weight\n` +
+    `- ${goal.multiple}× target is a stretch but possible → eligible for 8-15% weight\n` +
+    `- ${goal.multiple}× target clearly exceeds industry TAM → cap at 5-8%\n` +
+    `Smaller market cap = easier ${goal.multiple}× path = structurally deserves MORE weight.\n\n` +
+    'PRINCIPLE 2 — ASYMMETRIC REWARD (determines weight WITHIN the ceiling):\n' +
+    '- Downside protected (has revenue, signed contracts, backlog, cash) + large upside → top of ceiling\n' +
+    '- High binary risk (pre-revenue, no signed contracts, unproven tech) → bottom of ceiling\n' +
+    '- Currently down >30% from highs with NO thesis drift → INCREASE weight (better entry point)\n' +
+    '- Currently profitable with execution momentum → do NOT trim unless >35% of portfolio\n\n' +
+    'PRINCIPLE 3 — PORTFOLIO CONSTRUCTION (hard constraints):\n' +
+    '- Targets must sum to exactly 100\n' +
+    '- No single position above 30%\n' +
+    '- Thesis drift: reduce to 3% or exit\n' +
+    '- Keep targets in clean 1% increments\n' +
+    '- Power Law: 2-3 positions should dominate (15%+ each). Avoid spreading too thin.\n\n' +
     'Respond with valid JSON only — no markdown, no explanation outside the JSON array.';
 
   const lines = holdings
-    .map(
-      (h) =>
-        `${h.symbol} (${h.name}): current ${h.weight.toFixed(1)}%, ` +
+    .map((h) => {
+      const mcapStr = h.marketCap
+        ? h.marketCap >= 1e12 ? `$${(h.marketCap / 1e12).toFixed(2)}T`
+        : h.marketCap >= 1e9  ? `$${(h.marketCap / 1e9).toFixed(1)}B`
+        : `$${(h.marketCap / 1e6).toFixed(0)}M`
+        : 'N/A';
+      const tenX = h.marketCap
+        ? h.marketCap * goal.multiple >= 1e12
+          ? `$${((h.marketCap * goal.multiple) / 1e12).toFixed(1)}T`
+          : `$${((h.marketCap * goal.multiple) / 1e9).toFixed(0)}B`
+        : 'N/A';
+      return (
+        `${h.symbol} (${h.name}): market cap ${mcapStr}, ${goal.multiple}× target = ${tenX}, ` +
+        `current weight ${h.weight.toFixed(1)}%, ` +
         `conviction ${h.conviction ?? 'none'}/5, P&L ${h.pnlPct > 0 ? '+' : ''}${h.pnlPct.toFixed(1)}%, ` +
-        `risk=${h.riskLevel}${h.thesisDrift ? ', THESIS DRIFT' : ''}, ${h.type}, ${h.sector}`,
-    )
+        `risk=${h.riskLevel}${h.thesisDrift ? ', THESIS DRIFT' : ''}, ${h.type}, ${h.sector}`
+      );
+    })
     .join('\n');
 
   const newsBlock = formatNewsBlock(newsContext);
@@ -307,17 +329,13 @@ export async function generateTargetAllocations(
     `Set target weights for this aggressive growth portfolio (goal: ${goal.label}):\n${lines}\n\n` +
     (newsBlock ? `${newsBlock}\n\n` : '') +
     (goal.runwayNote ? `⚠️ ${goal.runwayNote}\n\n` : '') +
-    `Rules:\n` +
-    `- Targets for holdings should sum to 90-95 (reserve 5-10% as cash).\n` +
-    `- Prioritise positions with the highest potential for ${goal.multiple}× upside by ${goal.year}.\n` +
-    `- High conviction (4–5/5) = earn a large allocation (15-25%) if the ${goal.multiple}× case is credible.\n` +
-    `- No single position above 25% target weight.\n` +
-    `- Thesis drift positions should be reduced or trimmed — they are no longer trusted.\n` +
-    `- Risk level alone is NOT a reason to reduce weight; upside potential is the primary driver.\n` +
-    `- IMPORTANT: A position that has fallen significantly in price but has NO thesis drift is a BUYING opportunity, not a sell signal. Increase its target weight.\n` +
-    `- Smaller market cap = easier ${goal.multiple}× math. Favor smaller names when conviction is similar.\n` +
-    `- Factor in recent news when assessing momentum and near-term risk to each position.\n` +
-    `- Keep targets in clean 1% increments.\n\n` +
+    `Apply the three principles strictly in order. Principle 1 sets the ceiling, Principle 2 sets the actual weight, Principle 3 enforces constraints.\n\n` +
+    `Common mistakes to avoid:\n` +
+    `- Do NOT reduce a position just because its price fell. Price decline + intact thesis = opportunity.\n` +
+    `- Do NOT increase a position just because its price rose this week. Momentum ≠ thesis strength.\n` +
+    `- Do NOT give equal weight to all positions. Power Law: 2-3 winners should carry the portfolio.\n` +
+    `- Do NOT ignore the market cap data provided. The ${goal.multiple}× math is the most important input.\n` +
+    `Keep targets in clean 1% increments.\n\n` +
     `Return a JSON array (one entry per holding, plus one entry for CASH):\n` +
     `[\n` +
     `  { "symbol": "RKLB", "targetWeight": 20, "rationale": "one sentence tying weight to ${goal.multiple}× thesis" },\n` +
@@ -356,15 +374,13 @@ export async function generateRebalanceSuggestion(
   goal: GoalContext = buildGoalContext(10, 2030),
 ): Promise<GeneratedRebalance> {
   const systemPrompt =
-    `You are a disciplined portfolio manager running an aggressive growth portfolio with a ${goal.label} goal. ` +
-    'Suggest specific rebalance trades that move the portfolio closer to its target weights and strengthen ' +
-    `the ${goal.multiple}× thesis — prioritising the highest-upside positions. ` +
-    '\n\nKEY PRINCIPLES:\n' +
-    '- NEVER sell a winning position just because it exceeded target weight by a small margin (<5%). Winners run.\n' +
-    '- Only trim winners when they exceed target by >10% AND there is a better asymmetric opportunity to fund.\n' +
-    '- Positions down >30% with NO thesis drift = ADD, not trim. Price decline ≠ thesis failure.\n' +
-    '- Macro-driven selloffs (market-wide fear) are NOT a reason to sell individual positions. Only company-specific thesis breaks justify exits.\n' +
-    '- Maximum capital moved in any single rebalance = 10% of portfolio. Avoid large sudden shifts.\n' +
+    `You are a disciplined portfolio manager. The portfolio targets ${goal.label}. ` +
+    'Suggest rebalance trades using these rules:\n' +
+    '- Winners (profitable + executing): do NOT trim unless >35% of portfolio. Let them run.\n' +
+    '- Losers with intact thesis: these are ADD opportunities, not sells.\n' +
+    '- Losers with broken thesis or drift: EXIT.\n' +
+    '- Macro events (war, tariffs, rates): NOT a reason to sell. Only company-specific thesis breaks matter.\n' +
+    '- Max 10% of portfolio moved in any single rebalance.\n' +
     'Respond with valid JSON only — no markdown, no explanation outside the JSON object.';
 
   const table = rows
