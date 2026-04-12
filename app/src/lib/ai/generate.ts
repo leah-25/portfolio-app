@@ -283,6 +283,13 @@ export async function generateTargetAllocations(
     'Targets must sum to exactly 100. ' +
     `Overweight high-conviction positions with a credible ${goal.multiple}× path even if risk is rated high. ` +
     'Underweight or trim positions with thesis drift, low conviction, or limited upside. ' +
+    '\n\nCRITICAL RULES:\n' +
+    `1. VALUATION CEILING TEST: Calculate each position's current market cap × ${goal.multiple}. If the result exceeds the total addressable market (TAM) of that industry by 2030, cap the target weight at 5% maximum — the ${goal.multiple}× math doesn't work for mega-caps.\n` +
+    `2. SMALL-CAP ADVANTAGE: Positions with market cap under $5B have the easiest path to ${goal.multiple}× (smaller base). When conviction scores are equal, allocate MORE to smaller market cap names, not less.\n` +
+    '3. CASH RESERVE: Reserve 5-10% as cash (do NOT allocate to holdings). Targets for holdings should sum to 90-95, not 100. The remaining 5-10% is dry powder for drawdown buying opportunities.\n' +
+    '4. MEAN REVERSION OPPORTUNITY: Positions that are down >30% from their 52-week high BUT still have intact thesis (no drift flag) should be INCREASED in target weight, not decreased. Falling price with intact thesis = better entry point = higher asymmetric reward.\n' +
+    '5. SINGLE POSITION CAP: No single position should exceed 25% target weight to limit concentration risk.\n' +
+    '6. SECTOR CAP: Total exposure to any single sector should not exceed 50%.\n' +
     'Respond with valid JSON only — no markdown, no explanation outside the JSON array.';
 
   const lines = holdings
@@ -301,16 +308,20 @@ export async function generateTargetAllocations(
     (newsBlock ? `${newsBlock}\n\n` : '') +
     (goal.runwayNote ? `⚠️ ${goal.runwayNote}\n\n` : '') +
     `Rules:\n` +
-    `- Targets must sum to 100.\n` +
+    `- Targets for holdings should sum to 90-95 (reserve 5-10% as cash).\n` +
     `- Prioritise positions with the highest potential for ${goal.multiple}× upside by ${goal.year}.\n` +
-    `- High conviction (4–5/5) = earn a large allocation (20%+) if the ${goal.multiple}× case is credible.\n` +
+    `- High conviction (4–5/5) = earn a large allocation (15-25%) if the ${goal.multiple}× case is credible.\n` +
+    `- No single position above 25% target weight.\n` +
     `- Thesis drift positions should be reduced or trimmed — they are no longer trusted.\n` +
     `- Risk level alone is NOT a reason to reduce weight; upside potential is the primary driver.\n` +
+    `- IMPORTANT: A position that has fallen significantly in price but has NO thesis drift is a BUYING opportunity, not a sell signal. Increase its target weight.\n` +
+    `- Smaller market cap = easier ${goal.multiple}× math. Favor smaller names when conviction is similar.\n` +
     `- Factor in recent news when assessing momentum and near-term risk to each position.\n` +
     `- Keep targets in clean 1% increments.\n\n` +
-    `Return a JSON array (one entry per holding):\n` +
+    `Return a JSON array (one entry per holding, plus one entry for CASH):\n` +
     `[\n` +
-    `  { "symbol": "RKLB", "targetWeight": 20, "rationale": "one sentence tying weight to ${goal.multiple}× thesis" }\n` +
+    `  { "symbol": "RKLB", "targetWeight": 20, "rationale": "one sentence tying weight to ${goal.multiple}× thesis" },\n` +
+    `  { "symbol": "CASH", "targetWeight": 10, "rationale": "dry powder for drawdown opportunities" }\n` +
     `]`;
 
   const text = await callClaude(prompt, systemPrompt, apiKey);
@@ -348,6 +359,12 @@ export async function generateRebalanceSuggestion(
     `You are a disciplined portfolio manager running an aggressive growth portfolio with a ${goal.label} goal. ` +
     'Suggest specific rebalance trades that move the portfolio closer to its target weights and strengthen ' +
     `the ${goal.multiple}× thesis — prioritising the highest-upside positions. ` +
+    '\n\nKEY PRINCIPLES:\n' +
+    '- NEVER sell a winning position just because it exceeded target weight by a small margin (<5%). Winners run.\n' +
+    '- Only trim winners when they exceed target by >10% AND there is a better asymmetric opportunity to fund.\n' +
+    '- Positions down >30% with NO thesis drift = ADD, not trim. Price decline ≠ thesis failure.\n' +
+    '- Macro-driven selloffs (market-wide fear) are NOT a reason to sell individual positions. Only company-specific thesis breaks justify exits.\n' +
+    '- Maximum capital moved in any single rebalance = 10% of portfolio. Avoid large sudden shifts.\n' +
     'Respond with valid JSON only — no markdown, no explanation outside the JSON object.';
 
   const table = rows

@@ -119,7 +119,15 @@ ${riskSection}
 ${holdingLines}
 
 ## Analysis Request
-Please provide a concise, high-signal portfolio analysis. Use exactly this structure with the 5 section headers below, separated by --- dividers:
+Please provide a concise, high-signal portfolio analysis. The investor's goal is 10× by 2030.
+
+KEY ANALYTICAL FRAMEWORK:
+- For each position, mentally calculate: current market cap × 10. If that number exceeds the industry TAM, flag it as "10× mathematically constrained."
+- Positions with small market caps (<$5B) have the easiest 10× path — these deserve higher conviction unless thesis is broken.
+- Price decline with intact thesis = opportunity. Price decline with broken thesis = exit.
+- Macro events (wars, tariffs, rate changes) affect ALL stocks equally — they are not position-specific exit signals.
+
+Use exactly this structure with the 5 section headers below, separated by --- dividers:
 
 ## Overall Assessment
 One tight paragraph on whether this portfolio is well-positioned for the 2030 10× goal. Call out the single biggest strength and the single biggest concern.
