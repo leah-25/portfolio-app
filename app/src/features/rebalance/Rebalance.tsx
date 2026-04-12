@@ -121,7 +121,7 @@ export default function Rebalance() {
   const { entries, deleteEntry }       = useRebalanceStore();
   const { holdings, updateHolding }            = useHoldingsStore();
   const { anthropicKey }                       = useAIStore();
-  const { apiKey: marketApiKey, provider }     = useMarketStore();
+  const { apiKey: marketApiKey, provider, quotes } = useMarketStore();
   const { goalMultiple, goalYear }             = usePortfolioGoalStore();
   const hasAI = USE_SERVER_KEY || !!anthropicKey;
   const hasPolygonNews = provider === 'polygon' && !!marketApiKey;
@@ -228,6 +228,7 @@ export default function Rebalance() {
           symbol: h.symbol, name: h.name, type: h.type, sector: h.sector,
           weight: h.weight, pnlPct: h.pnlPct, conviction: h.conviction,
           thesisDrift: h.thesisDrift, riskLevel: h.riskLevel,
+          marketCap: quotes[h.symbol]?.marketCap ?? null,
         })),
         anthropicKey || undefined,
         newsContext,

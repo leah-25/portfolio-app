@@ -21,6 +21,7 @@ export interface PromptHolding {
 export interface PromptQuote {
   price: number;
   changePercent: number;
+  marketCap?: number;
 }
 
 export function buildPrompt(
@@ -78,6 +79,11 @@ export function buildPrompt(
     const livePrice = q
       ? `$${q.price.toFixed(2)} (today: ${q.changePercent >= 0 ? '+' : ''}${q.changePercent.toFixed(2)}%)`
       : 'price N/A';
+    const mcap = q?.marketCap
+      ? q.marketCap >= 1e12 ? `$${(q.marketCap / 1e12).toFixed(2)}T`
+      : q.marketCap >= 1e9  ? `$${(q.marketCap / 1e9).toFixed(1)}B`
+      : `$${(q.marketCap / 1e6).toFixed(0)}M`
+      : 'N/A';
     const conviction = h.conviction ?? 'unrated';
     const drift = h.thesisDrift ? ' ⚠ THESIS DRIFT' : '';
 
@@ -93,6 +99,7 @@ export function buildPrompt(
       `  • ${h.symbol} (${h.name}) — ${h.type.toUpperCase()}, ${h.sector}`,
       `    Weight: ${h.weight.toFixed(1)}% | Target: ${h.targetWeight != null ? h.targetWeight + '%' : 'none'}`,
       `    Qty: ${h.quantity} | Cost: $${h.costBasis.toLocaleString()} | Live: ${livePrice}`,
+      `    Market Cap: ${mcap}`,
       `    P&L: ${h.pnl >= 0 ? '+' : ''}$${h.pnl.toLocaleString()} (${h.pnlPct >= 0 ? '+' : ''}${h.pnlPct.toFixed(1)}%)`,
       `    Conviction: ${conviction}/5 | Risk: ${h.riskLevel}${drift}`,
       `    Thesis: ${thesis}`,
@@ -119,13 +126,14 @@ ${riskSection}
 ${holdingLines}
 
 ## Analysis Request
-Please provide a concise, high-signal portfolio analysis. The investor's goal is 10× by 2030.
+Provide a concise portfolio analysis. The investor targets 10× by 2030.
 
-KEY ANALYTICAL FRAMEWORK:
-- For each position, mentally calculate: current market cap × 10. If that number exceeds the industry TAM, flag it as "10× mathematically constrained."
-- Positions with small market caps (<$5B) have the easiest 10× path — these deserve higher conviction unless thesis is broken.
-- Price decline with intact thesis = opportunity. Price decline with broken thesis = exit.
-- Macro events (wars, tariffs, rate changes) affect ALL stocks equally — they are not position-specific exit signals.
+Framework:
+- 10× MATH: For each position, market cap × 10 vs industry TAM. Flag positions where 10× is mathematically constrained. Use the Market Cap data provided above.
+- ASYMMETRY: Price decline + intact thesis = opportunity. Price decline + broken thesis = exit.
+- WINNERS: Do not recommend trimming profitable positions unless >35% of portfolio.
+- SMALL CAP EDGE: Smaller market cap = easier 10× path. This is a structural advantage, not a risk.
+- MACRO vs MICRO: Market-wide events (wars, tariffs) are context, not position-specific exit signals.
 
 Use exactly this structure with the 5 section headers below, separated by --- dividers:
 
