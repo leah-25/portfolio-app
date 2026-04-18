@@ -70,17 +70,20 @@ export default function Settings() {
 
   function handleExport() {
     const data = {
+      version:    1,
+      exportedAt: new Date().toISOString(),
       holdings:   holdingsStore.holdings,
       notes:      notesStore.notes,
       risk:       riskStore.entries,
       rebalance:  rebalanceStore.entries,
       aiNotes:    aiNotesStore.notes,
+      goal:       { goalMultiple, goalYear },
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `portfolio-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `portfolio-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -96,7 +99,9 @@ export default function Settings() {
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target?.result as string);
-        // Use zustand setState directly via the store actions
+        if (data.version !== undefined && data.version !== 1) {
+          throw new Error('Unsupported backup version');
+        }
         if (Array.isArray(data.holdings)) {
           useHoldingsStore.setState({ holdings: data.holdings });
         }
@@ -112,9 +117,11 @@ export default function Settings() {
         if (Array.isArray(data.aiNotes)) {
           useResearchNotesStore.setState({ notes: data.aiNotes });
         }
+        if (data.goal?.goalMultiple) setGoalMultiple(data.goal.goalMultiple);
+        if (data.goal?.goalYear)     setGoalYear(data.goal.goalYear);
         alert('Import successful! Your data has been restored.');
-      } catch {
-        alert('Import failed — the file does not appear to be a valid portfolio export.');
+      } catch (err) {
+        alert(`Import failed — ${err instanceof Error ? err.message : 'the file does not appear to be a valid portfolio backup.'}`);
       }
     };
     reader.readAsText(file);

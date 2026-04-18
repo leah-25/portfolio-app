@@ -82,7 +82,7 @@ async function callClaude(
 
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   const msg = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-opus-4-7',
     max_tokens: 4096,
     system: systemPrompt,
     messages: [{ role: 'user', content: prompt }],
@@ -282,7 +282,7 @@ export async function generateTargetAllocations(
     `You are a senior portfolio manager at a Tier-1 hedge fund. The portfolio targets ${goal.label}. ` +
     'Each holding below includes its current market cap and the implied market cap at ' +
     `${goal.multiple}×. Use these numbers directly — do not guess.\n\n` +
-    'Calculate optimal target weights using these three principles IN ORDER:\n\n' +
+    'Calculate optimal target weights using these principles IN ORDER:\n\n' +
     `PRINCIPLE 1 — ${goal.multiple}× MATH TEST (primary filter, determines weight CEILING):\n` +
     `Look at each position's "${goal.multiple}× target" market cap provided in the data.\n` +
     `- ${goal.multiple}× target is realistic within industry TAM → eligible for 15-25% weight\n` +
@@ -292,9 +292,18 @@ export async function generateTargetAllocations(
     'PRINCIPLE 2 — ASYMMETRIC REWARD (determines weight WITHIN the ceiling):\n' +
     '- Downside protected (has revenue, signed contracts, backlog, cash) + large upside → top of ceiling\n' +
     '- High binary risk (pre-revenue, no signed contracts, unproven tech) → bottom of ceiling\n' +
-    '- Currently down >30% from highs with NO thesis drift → INCREASE weight (better entry point)\n' +
+    '- Currently down >30% from highs with NO thesis drift AND has revenue → INCREASE weight (better entry point)\n' +
     '- Currently profitable with execution momentum → do NOT trim unless >35% of portfolio\n\n' +
-    'PRINCIPLE 3 — PORTFOLIO CONSTRUCTION (hard constraints):\n' +
+    `PRINCIPLE 3 — TIME-TO-REVENUE DISCOUNT (critical for ${goal.yearsRemaining.toFixed(1)}-year runway):\n` +
+    `- Pre-revenue companies needing 2+ years for first commercial revenue: CAP at 8% regardless of thesis quality.\n` +
+    `  Rationale: the ${goal.multiple}× runway is only ${goal.yearsRemaining.toFixed(1)} years; capital tied up in companies that won't generate revenue until year 2-3 has high opportunity cost.\n` +
+    '- This rule OVERRIDES Principle 2 bullet 3: "down >30% with intact thesis" does NOT trigger accumulation for pre-revenue names.\n' +
+    '- Revenue-generating companies (even if unprofitable) are NOT affected by this cap.\n\n' +
+    'PRINCIPLE 4 — WINNER PROTECTION (hard rule):\n' +
+    '- Positions currently up >30% with intact thesis must NOT have their target reduced by more than 2 percentage points below their current actual weight.\n' +
+    `- Example: if a position is at 9.5% actual weight with +43% P&L, target must be ≥ 7.5% (and ideally higher).\n` +
+    '- Rationale: cutting winners violates Power Law. Winners drive 10× outcomes.\n\n' +
+    'PRINCIPLE 5 — PORTFOLIO CONSTRUCTION (hard constraints):\n' +
     '- Targets must sum to exactly 100\n' +
     '- No single position above 30%\n' +
     '- Thesis drift: reduce to 3% or exit\n' +
@@ -329,10 +338,10 @@ export async function generateTargetAllocations(
     `Set target weights for this aggressive growth portfolio (goal: ${goal.label}):\n${lines}\n\n` +
     (newsBlock ? `${newsBlock}\n\n` : '') +
     (goal.runwayNote ? `⚠️ ${goal.runwayNote}\n\n` : '') +
-    `Apply the three principles strictly in order. Principle 1 sets the ceiling, Principle 2 sets the actual weight, Principle 3 enforces constraints.\n\n` +
+    `Apply the five principles strictly in order. Principle 1 sets the ceiling, Principle 2 sets the position within the ceiling, Principle 3 caps pre-revenue names at 8%, Principle 4 protects winners from cuts, Principle 5 enforces structural constraints.\n\n` +
     `Common mistakes to avoid:\n` +
-    `- Do NOT reduce a position just because its price fell. Price decline + intact thesis = opportunity.\n` +
-    `- Do NOT increase a position just because its price rose this week. Momentum ≠ thesis strength.\n` +
+    `- Do NOT recommend adding to pre-revenue positions just because they are down. The time-to-revenue discount (Principle 3) overrides asymmetric reward for pre-revenue names.\n` +
+    `- Do NOT reduce a winning position below 2%p under its current weight (Principle 4).\n` +
     `- Do NOT give equal weight to all positions. Power Law: 2-3 winners should carry the portfolio.\n` +
     `- Do NOT ignore the market cap data provided. The ${goal.multiple}× math is the most important input.\n` +
     `Keep targets in clean 1% increments.\n\n` +

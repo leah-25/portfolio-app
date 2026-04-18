@@ -98,11 +98,20 @@ export default function HoldingForm({ holding, open, onClose }: HoldingFormProps
     const conv = form.conviction   !== '' ? parseInt(form.conviction) as 1|2|3|4|5 : null;
 
     if (isEdit) {
+      const newCurrentValue = qty * cb;
+      const newTotalCost    = qty * cb;
+      const newPnl          = newCurrentValue - newTotalCost;
+      const newPnlPct       = newTotalCost > 0 ? (newPnl / newTotalCost) * 100 : 0;
       updateHolding(holding.id, {
         symbol:       form.symbol.toUpperCase().trim(),
         name:         form.name.trim(),
         type:         form.type,
         sector:       form.sector.trim(),
+        quantity:     qty,
+        costBasis:    cb,
+        currentValue: newCurrentValue,
+        pnl:          newPnl,
+        pnlPct:       newPnlPct,
         targetWeight: tw,
         conviction:   conv,
         riskLevel:    form.riskLevel,
@@ -190,7 +199,7 @@ export default function HoldingForm({ holding, open, onClose }: HoldingFormProps
           {/* Purchase */}
           <section className="space-y-3">
             <p className="text-2xs font-semibold uppercase tracking-widest text-text-muted">
-              {isEdit ? 'Cost Basis (read-only — use Add Lot to update)' : 'Purchase'}
+              {isEdit ? 'Position Size' : 'Purchase'}
             </p>
             <div className="grid grid-cols-3 gap-3">
               <Input
@@ -202,8 +211,6 @@ export default function HoldingForm({ holding, open, onClose }: HoldingFormProps
                 value={form.quantity}
                 onChange={e => set('quantity', e.target.value)}
                 error={errors.quantity}
-                disabled={isEdit}
-                className={isEdit ? 'opacity-60 cursor-not-allowed' : ''}
               />
               <Input
                 label="Cost / unit ($)"
@@ -214,8 +221,6 @@ export default function HoldingForm({ holding, open, onClose }: HoldingFormProps
                 value={form.costBasis}
                 onChange={e => set('costBasis', e.target.value)}
                 error={errors.costBasis}
-                disabled={isEdit}
-                className={isEdit ? 'opacity-60 cursor-not-allowed' : ''}
               />
               <Input
                 label="Purchase date"
@@ -226,6 +231,11 @@ export default function HoldingForm({ holding, open, onClose }: HoldingFormProps
                 className={isEdit ? 'opacity-60 cursor-not-allowed' : ''}
               />
             </div>
+            {isEdit && (
+              <p className="text-xs text-text-muted mt-1">
+                Editing quantity or cost basis does not update lot history. For accurate lot tracking, use "Add lot" instead.
+              </p>
+            )}
           </section>
 
           {/* Targets & risk */}
