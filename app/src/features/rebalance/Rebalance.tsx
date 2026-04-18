@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Plus, ArrowLeftRight, Pencil, Trash2, Sparkles, Loader2, Check, X } from 'lucide-react';
 import PageHeader from '../../components/layout/PageHeader';
 import PageContainer, { PageGrid } from '../../components/layout/PageContainer';
@@ -139,14 +139,32 @@ export default function Rebalance() {
   const [generatingActions, setGeneratingActions]   = useState(false);
   const [genError, setGenError]                     = useState<string | null>(null);
 
-  // Actual cash = whatever isn't allocated to holdings
+  // Enrich holdings with live quote prices (mirrors Dashboard weight calculation)
+  const enrichedHoldings = useMemo(() => {
+    const enriched = holdings.map((h) => {
+      const q = quotes[h.symbol];
+      if (!q) return h;
+      const currentValue = h.quantity * q.price;
+      const totalCost    = h.quantity * h.costBasis;
+      const pnl          = currentValue - totalCost;
+      const pnlPct       = totalCost > 0 ? (pnl / totalCost) * 100 : 0;
+      return { ...h, currentValue, pnl, pnlPct };
+    });
+    const totalValue = enriched.reduce((s, h) => s + h.currentValue, 0);
+    return enriched.map((h) => ({
+      ...h,
+      weight: totalValue > 0 ? (h.currentValue / totalValue) * 100 : h.weight,
+    }));
+  }, [holdings, quotes]);
+
+  // Actual cash = whatever isn't allocated to holdings (live-price based)
   const cashActual = parseFloat(
-    Math.max(0, 100 - holdings.reduce((s, h) => s + h.weight, 0)).toFixed(1),
+    Math.max(0, 100 - enrichedHoldings.reduce((s, h) => s + h.weight, 0)).toFixed(1),
   );
   const cashSuggestion = aiSuggestions?.find((s) => s.symbol === 'CASH') ?? null;
 
   // Build rows combining live holdings + pending edits
-  const allRows = holdings.map((h) => {
+  const allRows = enrichedHoldings.map((h) => {
     const pendingVal = pendingTargets[h.symbol];
     const effectiveTarget = pendingVal !== undefined ? pendingVal : h.targetWeight;
     return {
@@ -218,13 +236,13 @@ export default function Rebalance() {
     setGeneratingTargets(true);
     setGenError(null);
     try {
-      const symbols = holdings.map((h) => h.symbol);
+      const symbols = enrichedHoldings.map((h) => h.symbol);
       const newsContext = hasPolygonNews
         ? await fetchNewsContext(symbols, marketApiKey)
         : undefined;
 
       const results = await generateTargetAllocations(
-        holdings.map((h) => ({
+        enrichedHoldings.map((h) => ({
           symbol: h.symbol, name: h.name, type: h.type, sector: h.sector,
           weight: h.weight, pnlPct: h.pnlPct, conviction: h.conviction,
           thesisDrift: h.thesisDrift, riskLevel: h.riskLevel,

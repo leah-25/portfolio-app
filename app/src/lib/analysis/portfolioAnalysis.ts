@@ -88,7 +88,7 @@ async function analyzeDirectly(opts: AnalysisOptions): Promise<void> {
 
   const stream = client.messages.stream(
     {
-      model: 'claude-opus-4-6',
+      model: 'claude-opus-4-7',
       max_tokens: 2048,
       messages: [{ role: 'user', content: buildPrompt(holdings, quotes) }],
     },
